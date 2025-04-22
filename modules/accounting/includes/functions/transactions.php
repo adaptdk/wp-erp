@@ -39,32 +39,32 @@ function erp_acct_get_sales_transactions( $args = [] ) {
         $where = "WHERE (voucher.type = 'invoice' OR voucher.type = 'payment' OR voucher.type = 'return_payment')";
 
         if ( ! empty( $args['customer_id'] ) ) {
-            $where .= " AND (invoice.customer_id = {$args['customer_id']} OR invoice_receipt.customer_id = {$args['customer_id']}) ";
+            $where .= $wpdb->prepare( " AND (invoice.customer_id = %d OR invoice_receipt.customer_id = %d) ", $args['customer_id'], $args['customer_id'] );
         }
+
 
         if ( ! empty( $args['start_date'] ) ) {
-            $where .= " AND ( (invoice.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') OR (invoice_receipt.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') )";
+            $where .= $wpdb->prepare( " AND ( (invoice.trn_date BETWEEN %s AND %s) OR (invoice_receipt.trn_date BETWEEN %s AND %s) )", $args['start_date'], $args['end_date'], $args['start_date'], $args['end_date'] );
         }
 
-
         if ( ! empty( $args['status'] ) ) {
-            $where .= " AND (invoice.status={$args['status']} OR invoice_receipt.status={$args['status']}) ";
+            $where .= $wpdb->prepare( " AND (invoice.status = %d OR invoice_receipt.status = %d) ", $args['status'], $args['status'] );
         }
 
         if ( ! empty( $args['type'] ) ) {
-            if($args['type'] === 'estimate'){
-                $where .= " AND invoice.estimate = 1 ";
+            if ( $args['type'] === 'estimate' ) {
+                $where .= ' AND invoice.estimate = 1 ';
             }
-            if($args['type'] === 'payment'){
-                $where .= " AND voucher.type = '{$args['type']}' ";
+            if ( $args['type'] === 'payment' ) {
+                $where .= $wpdb->prepare( " AND voucher.type = %s ", $args['type'] );
             }
-            if($args['type'] === 'invoice'){
-                $where .= " AND voucher.type = '{$args['type']}' AND invoice.estimate = 0 ";
+            if ( $args['type'] === 'invoice' ) {
+                $where .= $wpdb->prepare( " AND voucher.type = %s AND invoice.estimate = 0 ", $args['type'] );
             }
         }
 
         if ( -1 !== $args['number'] ) {
-            $limit = "LIMIT {$args['number']} OFFSET {$args['offset']}";
+            $limit = $wpdb->prepare( "LIMIT %d OFFSET %d", $args['number'], $args['offset'] );
         }
 
         $sql = 'SELECT';
@@ -73,36 +73,40 @@ function erp_acct_get_sales_transactions( $args = [] ) {
             $sql .= ' COUNT( DISTINCT voucher.id ) AS total_number';
         } else {
             $sql .= ' voucher.id,
-                voucher.type,
-                voucher.editable,
-                invoice.customer_id AS inv_cus_id,
-                invoice.customer_name AS inv_cus_name,
-                invoice_receipt.customer_name AS pay_cus_name,
-                invoice.trn_date AS invoice_trn_date,
-                invoice_receipt.trn_date AS payment_trn_date,
-                invoice_receipt.ref,
-                invoice.due_date,
-                invoice.estimate,
-                (invoice.amount + invoice.tax) - invoice.discount AS sales_amount,
-                SUM(invoice_account_detail.debit - invoice_account_detail.credit) AS due,
-                invoice_receipt.amount AS payment_amount,
-                invoice.status as inv_status,
-                invoice_receipt.status as pay_status';
+                    voucher.type,
+                    voucher.editable,
+                    invoice.customer_id AS inv_cus_id,
+                    invoice.customer_name AS inv_cus_name,
+                    invoice_receipt.customer_name AS pay_cus_name,
+                    invoice.trn_date AS invoice_trn_date,
+                    invoice_receipt.trn_date AS payment_trn_date,
+                    invoice_receipt.ref,
+                    invoice.due_date,
+                    invoice.estimate,
+                    (invoice.amount + invoice.tax + invoice.shipping + invoice.shipping_tax) - invoice.discount AS sales_amount,
+                    SUM(invoice_account_detail.debit - invoice_account_detail.credit) AS due,
+                    invoice_receipt.amount AS payment_amount,
+                    invoice.status as inv_status,
+                    invoice_receipt.status as pay_status';
         }
+
+        $orderby = ( 'ASC' === sanitize_text_field($args['order']) ) ? 'voucher.id ASC' : 'voucher.id DESC';
 
         $sql .= " FROM {$wpdb->prefix}erp_acct_voucher_no AS voucher
             LEFT JOIN {$wpdb->prefix}erp_acct_invoices AS invoice ON invoice.voucher_no = voucher.id
             LEFT JOIN {$wpdb->prefix}erp_acct_invoice_receipts AS invoice_receipt ON invoice_receipt.voucher_no = voucher.id
             LEFT JOIN {$wpdb->prefix}erp_acct_invoice_account_details AS invoice_account_detail ON invoice_account_detail.invoice_no = invoice.voucher_no
-            {$where} GROUP BY voucher.id ORDER BY voucher.id {$args['order']} {$limit}";
+            {$where} GROUP BY voucher.id ORDER BY {$orderby} {$limit}";
+
+        erp_disable_mysql_strict_mode();
 
         if ( $args['count'] ) {
-            $wpdb->get_results( $sql );
+            $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sales_transaction_count = $wpdb->num_rows;
 
             wp_cache_set( $cache_key_count, $sales_transaction_count, 'erp-accounting' );
         } else {
-            $sales_transaction = $wpdb->get_results( $sql, ARRAY_A );
+            $sales_transaction = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             wp_cache_set( $cache_key, $sales_transaction, 'erp-accounting' );
         }
@@ -128,11 +132,11 @@ function erp_acct_get_sales_chart_status( $args = [] ) {
     $where = 'WHERE invoice.estimate<>1';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND invoice.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND invoice.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND invoice.customer_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND invoice.customer_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT COUNT(invoice.status) AS sub_total, status_type.type_name
@@ -140,7 +144,7 @@ function erp_acct_get_sales_chart_status( $args = [] ) {
             LEFT JOIN {$wpdb->prefix}erp_acct_invoices AS invoice ON invoice.status = status_type.id {$where}
             GROUP BY status_type.id HAVING COUNT(invoice.status) > 0 ORDER BY status_type.type_name ASC";
 
-    return $wpdb->get_results( $sql, ARRAY_A );
+    return $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -153,14 +157,14 @@ function erp_acct_get_sales_chart_status( $args = [] ) {
 function erp_acct_get_sales_chart_payment( $args = [] ) {
     global $wpdb;
 
-    $where = ' WHERE invoice.estimate<>1 AND invoice.status<>1';
+    $where = ' WHERE invoice.estimate<>1 AND invoice.status<>1 AND invoice.status<>7 AND invoice.status<>8';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND invoice.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND invoice.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND invoice.customer_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND invoice.customer_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT SUM(credit) as received, SUM(balance) AS outstanding
@@ -169,7 +173,7 @@ function erp_acct_get_sales_chart_payment( $args = [] ) {
         LEFT JOIN {$wpdb->prefix}erp_acct_invoice_account_details AS invoice_acc_detail ON invoice.voucher_no = invoice_acc_detail.invoice_no {$where}
         GROUP BY invoice.voucher_no) AS get_amount";
 
-    return $wpdb->get_row( $sql, ARRAY_A );
+    return $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -182,14 +186,14 @@ function erp_acct_get_sales_chart_payment( $args = [] ) {
 function erp_acct_get_bill_chart_data( $args = [] ) {
     global $wpdb;
 
-    $where = ' WHERE bill.status != 1';
+    $where = ' WHERE bill.status != 1  AND bill.status!=7 AND bill.status!=8';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND bill.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND bill.vendor_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND bill.vendor_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT SUM(debit) as paid, ABS(SUM(balance)) AS payable
@@ -198,7 +202,7 @@ function erp_acct_get_bill_chart_data( $args = [] ) {
         LEFT JOIN {$wpdb->prefix}erp_acct_bill_account_details AS bill_acc_detail ON bill.voucher_no = bill_acc_detail.bill_no {$where}
         GROUP BY bill.voucher_no) AS get_amount";
 
-    return $wpdb->get_row( $sql, ARRAY_A );
+    return $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -214,11 +218,11 @@ function erp_acct_get_bill_chart_status( $args = [] ) {
     $where = '';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= "WHERE bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( "WHERE bill.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND bill.vendor_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND bill.vendor_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT status_type.type_name, COUNT(bill.status) AS sub_total
@@ -228,7 +232,7 @@ function erp_acct_get_bill_chart_status( $args = [] ) {
             HAVING sub_total > 0
             ORDER BY status_type.type_name ASC";
 
-    return $wpdb->get_results( $sql, ARRAY_A );
+    return $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -241,14 +245,14 @@ function erp_acct_get_bill_chart_status( $args = [] ) {
 function erp_acct_get_purchase_chart_data( $args = [] ) {
     global $wpdb;
 
-    $where = ' WHERE purchase.purchase_order<>1 AND purchase.status<>1';
+    $where = ' WHERE purchase.purchase_order<>1 AND purchase.status<>1 AND purchase.status<>7 AND purchase.status<>8';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND purchase.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND purchase.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND purchase.vendor_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND purchase.vendor_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT SUM(debit) as paid, ABS(SUM(balance)) AS payable
@@ -257,7 +261,7 @@ function erp_acct_get_purchase_chart_data( $args = [] ) {
         LEFT JOIN {$wpdb->prefix}erp_acct_purchase_account_details AS purchase_acc_detail ON purchase.voucher_no = purchase_acc_detail.purchase_no {$where}
         GROUP BY purchase.voucher_no) AS get_amount";
 
-    $result = $wpdb->get_row( $sql, ARRAY_A );
+    $result = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
     return $result;
 }
@@ -275,11 +279,11 @@ function erp_acct_get_purchase_chart_status( $args = [] ) {
     $where = 'WHERE purchase.purchase_order<>1';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND purchase.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND purchase.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND purchase.vendor_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND purchase.vendor_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT status_type.type_name, COUNT(purchase.status) AS sub_total
@@ -289,7 +293,7 @@ function erp_acct_get_purchase_chart_status( $args = [] ) {
             HAVING sub_total > 0
             ORDER BY status_type.type_name ASC";
 
-    $result = $wpdb->get_results( $sql, ARRAY_A );
+    $result = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
     return $result;
 }
@@ -307,11 +311,11 @@ function erp_acct_get_expense_chart_data( $args = [] ) {
     $where = '';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= "WHERE bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( "WHERE bill.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND bill.people_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND bill.people_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT SUM(balance) as paid, 0 AS payable
@@ -319,7 +323,7 @@ function erp_acct_get_expense_chart_data( $args = [] ) {
         FROM {$wpdb->prefix}erp_acct_expenses AS bill
         LEFT JOIN {$wpdb->prefix}erp_acct_expense_details AS bill_acc_detail ON bill.voucher_no = bill_acc_detail.trn_no {$where} HAVING balance > 0 ) AS get_amount";
 
-    return $wpdb->get_row( $sql, ARRAY_A );
+    return $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -335,11 +339,11 @@ function erp_acct_get_expense_chart_status( $args = [] ) {
     $where = '';
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= "WHERE bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( "WHERE bill.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND bill.people_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND bill.people_id = %d ", $args['people_id'] );
     }
 
     $sql = "SELECT status_type.type_name, COUNT(bill.status) AS sub_total
@@ -349,7 +353,7 @@ function erp_acct_get_expense_chart_status( $args = [] ) {
             HAVING sub_total > 0
             ORDER BY status_type.type_name ASC";
 
-    return $wpdb->get_row( $sql, ARRAY_A );
+    return $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -387,7 +391,7 @@ function erp_acct_get_income_expense_chart_data() {
         'expense' => array_values( $expenses_monthly ),
     ];
 
-    $current_year = date( 'Y' );
+    $current_year = gmdate( 'Y' );
     $start_date   = $current_year . '-01-01';
     $end_date     = $current_year . '-12-31';
 
@@ -439,19 +443,7 @@ function erp_acct_get_income_expense_chart_data() {
 function erp_acct_get_monthly_balance_by_chart_id( $start_date, $end_date, $chart_id ) {
     global $wpdb;
 
-    $ledger_details = $wpdb->prefix . 'erp_acct_ledger_details';
-    $ledgers        = $wpdb->prefix . 'erp_acct_ledgers';
-    $chart_of_accs  = $wpdb->prefix . 'erp_acct_chart_of_accounts';
-
-    $query = "Select Month(ld.trn_date) as month, SUM( ld.debit-ld.credit ) as balance
-              From $ledger_details as ld
-              Inner Join $ledgers as al on al.id = ld.ledger_id
-              Inner Join $chart_of_accs as ca on ca.id = al.chart_id
-              Where ca.id = %d
-              AND ld.trn_date BETWEEN %s AND %s
-              Group By Month(ld.trn_date)";
-
-    $results = $wpdb->get_results( $wpdb->prepare( $query, $chart_id, $start_date, $end_date ), ARRAY_A );
+    $results = $wpdb->get_results( $wpdb->prepare( "Select Month(ld.trn_date) as month, SUM( ld.debit-ld.credit ) as balance From {$wpdb->prefix}erp_acct_ledger_details as ld Inner Join {$wpdb->prefix}erp_acct_ledgers as al on al.id = ld.ledger_id Inner Join {$wpdb->prefix}erp_acct_chart_of_accounts as ca on ca.id = al.chart_id Where ca.id = %d AND ld.trn_date BETWEEN %s AND %s Group By Month(ld.trn_date)", $chart_id, $start_date, $end_date ), ARRAY_A );
 
     return $results;
 }
@@ -481,7 +473,7 @@ function erp_acct_format_monthly_data_to_yearly_data( $result ) {
 
     $result = array_map(
         function ( $item ) {
-            $item['month']   = date( 'M', mktime( 0, 0, 0, $item['month'] ) );
+            $item['month']   = gmdate( 'M', mktime( 0, 0, 0, $item['month'] ) );
             $item['balance'] = abs( $item['balance'] );
 
             return $item;
@@ -502,7 +494,7 @@ function erp_acct_format_monthly_data_to_yearly_data( $result ) {
 /**
  * Get Balance amount for given chart of account in time range
  *
- * @param $chart_id
+ * @param        $chart_id
  * @param string $month
  *
  * @return array|object|null
@@ -514,31 +506,19 @@ function erp_acct_get_daily_balance_by_chart_id( $chart_id, $month = 'current' )
 
     switch ( $month ) {
         case 'current':
-            $start_date = date( 'Y-m-d', strtotime( 'first day of this month' ) );
-            $end_date   = date( 'Y-m-d', strtotime( 'last day of this month' ) );
+            $start_date = gmdate( 'Y-m-d', strtotime( 'first day of this month' ) );
+            $end_date   = gmdate( 'Y-m-d', strtotime( 'last day of this month' ) );
             break;
 
         case 'last':
-            $start_date = date( 'Y-m-d', strtotime( 'first day of previous month' ) );
-            $end_date   = date( 'Y-m-d', strtotime( 'last day of previous month' ) );
+            $start_date = gmdate( 'Y-m-d', strtotime( 'first day of previous month' ) );
+            $end_date   = gmdate( 'Y-m-d', strtotime( 'last day of previous month' ) );
             break;
         default:
             break;
     }
 
-    $ledger_details = $wpdb->prefix . 'erp_acct_ledger_details';
-    $ledgers        = $wpdb->prefix . 'erp_acct_ledgers';
-    $chart_of_accs  = $wpdb->prefix . 'erp_acct_chart_of_accounts';
-
-    $query = "Select ld.trn_date as day, SUM( ld.debit-ld.credit ) as balance
-              From $ledger_details as ld
-              Inner Join $ledgers as al on al.id = ld.ledger_id
-              Inner Join $chart_of_accs as ca on ca.id = al.chart_id
-              Where ca.id = %d
-              AND ld.trn_date BETWEEN %s AND %s
-              Group By ld.trn_date";
-
-    $results = $wpdb->get_results( $wpdb->prepare( $query, $chart_id, $start_date, $end_date ), ARRAY_A );
+    $results = $wpdb->get_results( $wpdb->prepare( "Select ld.trn_date as day, SUM( ld.debit-ld.credit ) as balance From {$wpdb->prefix}erp_acct_ledger_details as ld Inner Join {$wpdb->prefix}erp_acct_ledgers as al on al.id = ld.ledger_id Inner Join {$wpdb->prefix}erp_acct_chart_of_accounts as ca on ca.id = al.chart_id Where ca.id = %d AND ld.trn_date BETWEEN %s AND %s Group By ld.trn_date", $chart_id, $start_date, $end_date ), ARRAY_A );
 
     return $results;
 }
@@ -553,7 +533,7 @@ function erp_acct_get_daily_balance_by_chart_id( $chart_id, $month = 'current' )
 function erp_acct_format_daily_data_to_yearly_data( $result ) {
     $result = array_map(
         function ( $item ) {
-            $item['day']     = date( 'd-m', strtotime( $item['day'] ) );
+            $item['day']     = gmdate( 'd-m', strtotime( $item['day'] ) );
             $item['balance'] = abs( $item['balance'] );
 
             return $item;
@@ -604,31 +584,31 @@ function erp_acct_get_expense_transactions( $args = [] ) {
         $where = "WHERE (voucher.type = 'pay_bill' OR voucher.type = 'bill' OR voucher.type = 'expense' OR voucher.type = 'check' ) ";
 
         if ( ! empty( $args['start_date'] ) ) {
-            $where .= " AND ( (bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') OR (pay_bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') OR (expense.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') )";
+            $where .= $wpdb->prepare( " AND ( (bill.trn_date BETWEEN %s AND %s) OR (pay_bill.trn_date BETWEEN %s AND %s) OR (expense.trn_date BETWEEN %s AND %s) )", $args['start_date'], $args['end_date'], $args['start_date'], $args['end_date'], $args['start_date'], $args['end_date'] );
         }
 
         if ( ! empty( $args['vendor_id'] ) ) {
-            $where .= " AND (bill.vendor_id = {$args['vendor_id']} OR pay_bill.vendor_id = {$args['vendor_id']}) ";
+            $where .= $wpdb->prepare( " AND (bill.vendor_id = %d OR pay_bill.vendor_id = %d) ", $args['vendor_id'], $args['vendor_id'] );
         }
 
         if ( ! empty( $args['start_date'] ) ) {
-            $where .= " AND ( (bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') OR (pay_bill.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') )";
+            $where .= $wpdb->prepare( " AND ( (bill.trn_date BETWEEN %s AND %s) OR (pay_bill.trn_date BETWEEN %s AND %s) )", $args['start_date'], $args['end_date'], $args['start_date'], $args['end_date'] );
         }
 
         if ( 0 === $args['status'] ) {
             $where .= '';
         } else {
             if ( ! empty( $args['status'] ) ) {
-                $where .= " AND (bill.status={$args['status']} OR pay_bill.status={$args['status']} OR expense.status={$args['status']} )";
+                $where .= $wpdb->prepare( " AND (bill.status=%d OR pay_bill.status=%d OR expense.status=%d )", $args['status'], $args['status'], $args['status']);
             }
         }
 
-        if ( ! empty($args['type']) ) {
-            $where .= " AND voucher.type = '{$args['type']}' ";
+        if ( ! empty( $args['type'] ) ) {
+            $where .= $wpdb->prepare( " AND voucher.type = %s ", $args['type'] );
         }
 
-        if ( -1 !== $args['number'] ) {
-            $limit = "LIMIT {$args['number']} OFFSET {$args['offset']}";
+        if ( - 1 !== $args['number'] ) {
+            $limit = $wpdb->prepare( "LIMIT %d OFFSET %d", $args['number'], $args['offset'] );
         }
 
         $sql = 'SELECT';
@@ -660,6 +640,8 @@ function erp_acct_get_expense_transactions( $args = [] ) {
                 expense.status as expense_status';
         }
 
+        $orderby = ( 'ASC' === sanitize_text_field($args['order']) ) ? 'voucher.id ASC' : 'voucher.id DESC';
+
         $sql .= " FROM {$wpdb->prefix}erp_acct_voucher_no AS voucher
             LEFT JOIN {$wpdb->prefix}erp_acct_bills AS bill ON bill.voucher_no = voucher.id
             LEFT JOIN {$wpdb->prefix}erp_acct_pay_bill AS pay_bill ON pay_bill.voucher_no = voucher.id
@@ -668,16 +650,18 @@ function erp_acct_get_expense_transactions( $args = [] ) {
             LEFT JOIN {$wpdb->prefix}erp_acct_expense_checks AS cheque ON cheque.trn_no = voucher.id
             {$where}
             GROUP BY voucher.id
-            ORDER BY voucher.id {$args['order']} {$limit}";
+            ORDER BY {$orderby} {$limit}";
+
+        erp_disable_mysql_strict_mode();
 
         if ( $args['count'] ) {
-            $wpdb->get_results( $sql );
+            $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
-            $expense_transaction_count =  $wpdb->num_rows;
+            $expense_transaction_count = $wpdb->num_rows;
 
             wp_cache_set( $cache_key_count, $expense_transaction_count, 'erp-accounting' );
         } else {
-            $expense_transaction = $wpdb->get_results( $sql, ARRAY_A );
+            $expense_transaction = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             wp_cache_set( $cache_key, $expense_transaction, 'erp-accounting' );
         }
@@ -726,31 +710,31 @@ function erp_acct_get_purchase_transactions( $args = [] ) {
         $where = "WHERE (voucher.type = 'pay_purchase' OR voucher.type = 'receive_pay_purchase' OR voucher.type = 'purchase')";
 
         if ( ! empty( $args['vendor_id'] ) ) {
-            $where .= " AND (purchase.vendor_id = {$args['vendor_id']} OR pay_purchase.vendor_id = {$args['vendor_id']}) ";
+            $where .= $wpdb->prepare( " AND (purchase.vendor_id = %d OR pay_purchase.vendor_id = %d) ", $args['vendor_id'], $args['vendor_id']);
         }
 
         if ( ! empty( $args['start_date'] ) ) {
-            $where .= " AND ( (purchase.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') OR (pay_purchase.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}') )";
+            $where .= $wpdb->prepare( " AND ( (purchase.trn_date BETWEEN %s AND %s) OR (pay_purchase.trn_date BETWEEN %s AND %s) )", $args['start_date'], $args['end_date'], $args['start_date'], $args['end_date'] );
         }
 
         if ( ! empty( $args['type'] ) ) {
-            $where .= " AND voucher.type = '{$args['type']}'";
+            $where .= $wpdb->prepare( " AND voucher.type = %s ", $args['type'] );
         }
 
         if ( empty( $args['status'] ) ) {
             $where .= '';
         } else {
             if ( ! empty( $args['status'] ) ) {
-                $where .= " AND (purchase.status={$args['status']} OR pay_purchase.status={$args['status']}) ";
+                $where .= $wpdb->prepare( " AND (purchase.status=%d OR pay_purchase.status=%d) ", $args['status'], $args['status'] );
             }
         }
 
         if ( ! empty( $args['type'] ) ) {
-            $where .= " AND voucher.type = '{$args['start_date']}'";
+            $where .= $wpdb->prepare( " AND voucher.type = %s", $args['start_date'] );
         }
 
-        if ( -1 !== $args['number'] ) {
-            $limit = "LIMIT {$args['number']} OFFSET {$args['offset']}";
+        if ( - 1 !== $args['number'] ) {
+            $limit = $wpdb->prepare( "LIMIT %d OFFSET %d", $args['number'], $args['offset']);
         }
 
         $sql = 'SELECT';
@@ -776,21 +760,26 @@ function erp_acct_get_purchase_transactions( $args = [] ) {
                 pay_purchase.status AS pay_purchase_status';
         }
 
+        
+        $orderby = ( 'ASC' === sanitize_text_field($args['order']) ) ? 'voucher.id ASC' : 'voucher.id DESC';
+        
         $sql .= " FROM {$wpdb->prefix}erp_acct_voucher_no AS voucher
             LEFT JOIN {$wpdb->prefix}erp_acct_purchase AS purchase ON purchase.voucher_no = voucher.id
             LEFT JOIN {$wpdb->prefix}erp_acct_pay_purchase AS pay_purchase ON pay_purchase.voucher_no = voucher.id
             LEFT JOIN {$wpdb->prefix}erp_acct_purchase_account_details AS purchase_acct_details ON purchase_acct_details.purchase_no = purchase.voucher_no
-            {$where} GROUP BY voucher.id ORDER BY voucher.id {$args['order']} {$limit}";
+            {$where} GROUP BY voucher.id ORDER BY {$orderby} {$limit}";
+
+        erp_disable_mysql_strict_mode();
 
         if ( $args['count'] ) {
-            $wpdb->get_results( $sql );
+            $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
-            $purchase_transaction_count =  $wpdb->num_rows;
+            $purchase_transaction_count = $wpdb->num_rows;
 
             wp_cache_set( $cache_key_count, $purchase_transaction_count, 'erp-accounting' );
         }
 
-        $purchase_transaction = $wpdb->get_results( $sql, ARRAY_A );
+        $purchase_transaction = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         wp_cache_set( $cache_key, $purchase_transaction, 'erp-accounting' );
     }
@@ -824,13 +813,13 @@ function erp_acct_generate_transaction_pdfs() {
 
     $voucher_nos = $wpdb->get_results( "SELECT id, type FROM {$wpdb->prefix}erp_acct_voucher_no", ARRAY_A );
 
-    for ( $i = 0; $i < count( $voucher_nos ); $i++ ) {
-        if ( 'journal' === $voucher_nos[ $i ]['type'] ) {
+    for ( $i = 0; $i < count( $voucher_nos ); $i ++ ) {
+        if ( 'journal' === $voucher_nos[$i]['type'] ) {
             continue;
         }
 
-        $transaction = erp_acct_get_transaction( $voucher_nos[ $i ]['id'] );
-        $filename    = erp_acct_get_pdf_filename( $voucher_nos[ $i ]['id'] );
+        $transaction = erp_acct_get_transaction( $voucher_nos[$i]['id'] );
+        $filename    = erp_acct_get_pdf_filename( $voucher_nos[$i]['id'] );
         erp_acct_generate_pdf( [], $transaction, $filename, 'F' );
     }
 }
@@ -838,8 +827,8 @@ function erp_acct_generate_transaction_pdfs() {
 /**
  * Generate pdf
  *
- * @param $request
- * @param $transaction
+ * @param        $request
+ * @param        $transaction
  * @param string $file_name
  * @param string $output_method
  *
@@ -863,8 +852,8 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
 
     if ( ! empty( $request ) ) {
         $receiver   = isset( $request['receiver'] ) ? $request['receiver'] : $transaction->email;
-        $subject    = isset( $request['subject'] ) ? $request['subject'] : $transaction->subject;
-        $body       = isset( $request['message'] ) ? $request['message'] : $request['body'];
+        $subject    = isset( $request['subject'] ) ? $request['subject'] : ( ! empty( $transaction->subject ) ? $transaction->subject : '' );
+        $body       = isset( $request['message'] ) ? $request['message'] : ( ! empty( $request['body'] ) ? $request['body'] : '' );
         $attach_pdf = isset( $request['attachment'] ) && 'on' === $request['attachment'] ? true : false;
     }
 
@@ -906,9 +895,9 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
         $trn_id = $transaction->trn_no;
     }
 
-    $title =  isset($transaction->estimate) && (int)$transaction->estimate ? __( 'Estimate', 'erp' )  : __( $type, 'erp' ) ;
+    $title = isset( $transaction->estimate ) && (int) $transaction->estimate ? __( 'Estimate', 'erp' ) : __( $type, 'erp' );
     //Set type
-    $trn_pdf->set_type( $title);
+    $trn_pdf->set_type( $title );
 
     // Set barcode
     if ( $trn_id ) {
@@ -921,8 +910,8 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
     }
 
     // Set Reference No
-    if ( $transaction->ref ) {
-        $trn_pdf->set_reference( $transaction->ref , __( 'Reference No', 'erp' ) );
+    if ( ! empty( $transaction->ref ) ) {
+        $trn_pdf->set_reference( $transaction->ref, __( 'Reference No', 'erp' ) );
     }
 
 
@@ -932,7 +921,7 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
 
     // Set Due Date
     if ( $transaction->due_date ) {
-        $trn_pdf->set_reference( $transaction->due_date , __( 'Due Date', 'erp' ) );
+        $trn_pdf->set_reference( $transaction->due_date, __( 'Due Date', 'erp' ) );
     }
 
     // Set from Address
@@ -953,295 +942,470 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
     $trn_pdf->set_to_title( __( 'TO', 'erp' ) );
     $trn_pdf->set_to_address( $to_address );
 
-    /* Customize columns based on transaction type */
-    if ( 'invoice' == $type ) {
+    // Customize columns based on transaction type
+    switch ( $type ) {
+        case 'invoice':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PRODUCT', 'erp' ),
+                    __( 'QUANTITY', 'erp' ),
+                    __( 'UNIT PRICE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-             // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PRODUCT', 'erp' ), __( 'QUANTITY', 'erp' ), __( 'UNIT PRICE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['name'],
+                        $line['qty'],
+                        erp_acct_format_amount( $line['unit_price'] ),
+                        erp_acct_format_amount( $line['item_total'] ),
+                    ]
+                );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $trn_pdf->add_item( [ $line['name'], $line['qty'], erp_acct_get_price( $line['unit_price'] ), erp_acct_get_price( $line['item_total'] )  ] );
-        }
+            $trn_pdf->add_badge( sprintf( __( '%s', 'erp' ), erp_acct_get_formatted_status( $transaction->status ) ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), erp_acct_format_amount( $transaction->discount ) );
+            $trn_pdf->add_total( __( 'TAX', 'erp' ), erp_acct_format_amount( $transaction->tax ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount + $transaction->tax - $transaction->discount ) );
+            $trn_pdf->add_total( __( 'DUE', 'erp' ), erp_acct_format_amount( $transaction->total_due ) );
 
-        $status = erp_acct_get_formatted_status( $transaction->status );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
+            break;
 
-        $trn_pdf->add_badge( sprintf( __( '%1$s', 'erp' ), $status ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_get_price( $transaction->amount ) );
-        $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), erp_acct_get_price( $transaction->discount ) );
-        $trn_pdf->add_total( __( 'TAX', 'erp' ), erp_acct_get_price( $transaction->tax ) );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_get_price( $transaction->amount + $transaction->tax - $transaction->discount ) );
-        $trn_pdf->add_total( __( 'DUE', 'erp' ), $transaction->total_due );
+        case 'payment':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'INVOICE NO', 'erp' ),
+                    __( 'TRN DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
-    }
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['invoice_no'],
+                        $transaction->trn_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-    if ( 'payment' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'INVOICE NO', 'erp' ), __( 'TRN DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $trn_pdf->add_item( [ $line['invoice_no'], $transaction->trn_date, $line['amount'] ] );
-        }
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+        case 'return_payment':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'INVOICE NO', 'erp' ),
+                    __( 'TRN DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['invoice_no'],
+                        $transaction->trn_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-    if ( 'return_payment' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'INVOICE NO', 'erp' ), __( 'TRN DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $trn_pdf->add_item( [ $line['invoice_no'], $transaction->trn_date, $line['amount'] ] );
-        }
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+        case 'purchase_return':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PRODUCT', 'erp' ),
+                    __( 'QUANTITY', 'erp' ),
+                    __( 'UNIT PRICE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['name'],
+                        $line['qty'],
+                        erp_acct_format_amount( $line['price'] ),
+                        erp_acct_format_amount( floatval( $line['price'] ) * floatval( $line['qty'] ) ),
+                    ]
+                );
+            }
 
-    if ( 'purchase_return' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PRODUCT', 'erp' ), __( 'QUANTITY', 'erp' ), __( 'UNIT PRICE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->reason ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->reason );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $line_total = floatval( $line['price'] ) * floatval( $line['qty'] );
-            $trn_pdf->add_item( [ $line['name'], $line['qty'], $line['price'], $line_total ] );
-        }
+            $trn_pdf->add_badge( __( 'RETURNED', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'VAT', 'erp' ), erp_acct_format_amount( $transaction->tax ) );
+            $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), erp_acct_format_amount( $transaction->discount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( floatval( $transaction->amount ) + floatval( $transaction->tax ) - floatval( $transaction->discount ) ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->reason ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->reason );
-        }
+        case 'sales_return':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PRODUCT', 'erp' ),
+                    __( 'QUANTITY', 'erp' ),
+                    __( 'UNIT PRICE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'RETURNED', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'VAT', 'erp' ), $transaction->tax );
-        $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), $transaction->discount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), floatval( $transaction->amount ) + floatval( $transaction->tax ) - floatval( $transaction->discount ) );
-    }
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['name'],
+                        $line['qty'],
+                        erp_acct_format_amount( $line['unit_price'] ),
+                        erp_acct_format_amount( floatval( $line['unit_price'] ) * floatval( $line['qty'] ) ),
+                    ]
+                );
+            }
 
-    if ( 'sales_return' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PRODUCT', 'erp' ), __( 'QUANTITY', 'erp' ), __( 'UNIT PRICE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->reason ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->reason );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $line_total = floatval( $line['unit_price'] ) * floatval( $line['qty'] );
-            $trn_pdf->add_item( [ $line['name'], $line['qty'], $line['unit_price'], $line_total ] );
-        }
+            $trn_pdf->add_badge( __( 'RETURNED', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TAX', 'erp' ), erp_acct_format_amount( $transaction->tax ) );
+            $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), erp_acct_format_amount( $transaction->discount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( floatval( $transaction->amount ) + floatval( $transaction->tax ) - floatval( $transaction->discount ) ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->reason ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->reason );
-        }
+        case 'bill':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'BILL NO', 'erp' ),
+                    __( 'BILL DATE', 'erp' ),
+                    __( 'DUE DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'RETURNED', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TAX', 'erp' ), $transaction->tax );
-        $trn_pdf->add_total( __( 'DISCOUNT', 'erp' ), $transaction->discount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), (float) ( floatval( $transaction->amount ) + floatval( $transaction->tax ) - floatval( $transaction->discount ) ) );
-    }
+            // Add table items
+            foreach ( $transaction->bill_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['id'],
+                        $transaction->trn_date,
+                        $transaction->due_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-    if ( 'bill' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'BILL NO', 'erp' ), __( 'BILL DATE', 'erp' ), __( 'DUE DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->bill_details as $line ) {
-            $trn_pdf->add_item( [ $line['id'], $transaction->trn_date, $transaction->due_date, $line['amount'] ] );
-        }
+            $trn_pdf->add_badge( __( 'PENDING', 'erp' ) );
+            $trn_pdf->add_total( __( 'DUE', 'erp' ), erp_acct_format_amount( erp_acct_get_bill_due( $transaction->voucher_no ) ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+        case 'pay_bill':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'BILL NO', 'erp' ),
+                    __( 'DUE DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'PENDING', 'erp' ) );
-        $trn_pdf->add_total( __( 'DUE', 'erp' ), erp_acct_get_bill_due( $transaction->voucher_no ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add table items
+            foreach ( $transaction->bill_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['bill_no'],
+                        $transaction->trn_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-    if ( 'pay_bill' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'BILL NO', 'erp' ), __( 'DUE DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->bill_details as $line ) {
-            $trn_pdf->add_item( [ $line['bill_no'], $transaction->trn_date, $line['amount'] ] );
-        }
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+        case 'purchase':
+            $subtotal = 0;
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PRODUCT', 'erp' ),
+                    __( 'QUANTITY', 'erp' ),
+                    __( 'COST PRICE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add table items
+            foreach ( $transaction->line_items as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['name'],
+                        $line['qty'],
+                        erp_acct_format_amount( $line['cost_price'] ),
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
 
-    if ( 'purchase' === $type ) {
-        $subtotal = 0;
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PRODUCT', 'erp' ), __( 'QUANTITY', 'erp' ), __( 'COST PRICE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+                $subtotal += floatval( $line['line_total'] );
+            }
 
-        // Add Table Items
-        foreach ( $transaction->line_items as $line ) {
-            $trn_pdf->add_item( [ $line['name'], $line['qty'], $line['cost_price'], $line['amount'] ] );
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-            $subtotal += floatval( $line['line_total'] );
-        }
+            $trn_pdf->add_badge( sprintf( __( '%s', 'erp' ), erp_acct_get_formatted_status( $transaction->status ) ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $subtotal ) );
+            $trn_pdf->add_total( __( 'VAT', 'erp' ), erp_acct_format_amount( $transaction->tax ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'DUE', 'erp' ), erp_acct_format_amount( $transaction->total_due ) );
+            break;
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+        case 'pay_purchase':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PURCHASE NO', 'erp' ),
+                    __( 'DUE DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        $status = erp_acct_get_formatted_status( $transaction->status );
+            // Add table items
+            foreach ( $transaction->purchase_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['purchase_no'],
+                        $transaction->due_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-        $trn_pdf->add_badge( sprintf( __( '%1$s', 'erp' ), $status ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $subtotal );
-        $trn_pdf->add_total( __( 'VAT', 'erp' ), $transaction->tax );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'DUE', 'erp' ), $transaction->total_due );
-    }
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-    if ( 'pay_purchase' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PURCHASE NO', 'erp' ), __( 'DUE DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            // $trn_pdf->add_total( __( 'DUE', 'erp' ), erp_acct_format_amount( $transaction->due ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add Table Items
-        foreach ( $transaction->purchase_details as $line ) {
-            $trn_pdf->add_item( [ $line['purchase_no'], $transaction->due_date, $line['amount'] ] );
-        }
+        case 'receive_pay_purchase':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'PURCHASE NO', 'erp' ),
+                    __( 'DUE DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+            // Add table items
+            foreach ( $transaction->purchase_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['purchase_no'],
+                        $transaction->due_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        // $trn_pdf->add_total( __( 'DUE', 'erp' ), $transaction->due );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-    if ( 'receive_pay_purchase' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'PURCHASE NO', 'erp' ), __( 'DUE DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            // $trn_pdf->add_total( __( 'DUE', 'erp' ), $transaction->due );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add Table Items
-        foreach ( $transaction->purchase_details as $line ) {
-            $trn_pdf->add_item( [ $line['purchase_no'], $transaction->due_date, $line['amount'] ] );
-        }
+        case 'expense':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'EXPENSE NO', 'erp' ),
+                    __( 'EXPENSE DATE', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+            // Add table items
+            foreach ( $transaction->bill_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['trn_no'],
+                        $transaction->trn_date,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        // $trn_pdf->add_total( __( 'DUE', 'erp' ), $transaction->due );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-    if ( 'expense' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'EXPENSE NO', 'erp' ), __( 'EXPENSE DATE', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->amount ) );
+            break;
 
-        // Add Table Items
-        foreach ( $transaction->bill_details as $line ) {
-            $trn_pdf->add_item( [ $line['trn_no'], $transaction->trn_date, $line['amount'] ] );
-        }
+        case 'check':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'CHECK NO', 'erp' ),
+                    __( 'CHECK DATE', 'erp' ),
+                    __( 'PAY TO', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+            // Add table items
+            foreach ( $transaction->bill_details as $line ) {
+                $trn_pdf->add_item(
+                    [
+                        $line['check_no'],
+                        $transaction->trn_date,
+                        $transaction->pay_to,
+                        erp_acct_format_amount( $line['amount'] ),
+                    ]
+                );
+            }
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->amount );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->amount );
-    }
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-    if ( 'check' === $type ) {
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'CHECK NO', 'erp' ), __( 'CHECK DATE', 'erp' ), __( 'PAY TO', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
+            $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->total ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->total ) );
+            break;
 
-        // Add Table Items
-        foreach ( $transaction->bill_details as $line ) {
-            $trn_pdf->add_item( [ $line['check_no'], $transaction->trn_date, $transaction->pay_to, $line['amount'] ] );
-        }
+        case 'transfer_voucher':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'VOUCHER NO', 'erp' ),
+                    __( 'ACCOUNT FROM', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                    __( 'ACCOUNT TO', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+            $trn_pdf->add_item(
+                [
+                    $transaction->voucher_no,
+                    $transaction->ac_from,
+                    erp_acct_format_amount( $transaction->amount ),
+                    $transaction->ac_to
+                ]
+            );
 
-        $trn_pdf->add_badge( __( 'PAID', 'erp' ) );
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->total );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->total );
-    }
+            // Add particulars
+            if ( $transaction->particulars ) {
+                $trn_pdf->add_title( __( 'Notes', 'erp' ) );
+                $trn_pdf->add_paragraph( $transaction->particulars );
+            }
 
-    if ( 'transfer_voucher' === $type ) {
-        $type = __( 'Transfer Voucher', 'erp' );
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'VOUCHER NO', 'erp' ), __( 'ACCOUNT FROM', 'erp' ), __( 'AMOUNT', 'erp' ), __( 'ACCOUNT TO', 'erp' ) ] );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->balance ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->balance ) );
+            break;
 
-        $trn_pdf->add_item( [ $transaction->voucher_no, $transaction->ac_from, $transaction->amount, $transaction->ac_to ] );
+        case 'people_trn':
+            // Set column headers
+            $trn_pdf->set_table_headers(
+                [
+                    __( 'VOUCHER NO', 'erp' ),
+                    __( 'PARTICULARS', 'erp' ),
+                    __( 'AMOUNT', 'erp' ),
+                ]
+            );
 
-        // Add particulars
-        if ( $transaction->particulars ) {
-            $trn_pdf->add_title( __( 'Notes', 'erp' ) );
-            $trn_pdf->add_paragraph( $transaction->particulars );
-        }
+            $trn_pdf->add_item(
+                [
+                    $transaction->voucher_no,
+                    $transaction->particulars,
+                    erp_acct_format_amount( $transaction->balance ),
+                ]
+            );
 
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->balance );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->balance );
-    }
-
-    if ( 'people_trn' === $type ) {
-        $type = __( 'People Transaction', 'erp' );
-        // Set Column Headers
-        $trn_pdf->set_table_headers( [ __( 'VOUCHER NO', 'erp' ), __( 'PARTICULARS', 'erp' ), __( 'AMOUNT', 'erp' ) ] );
-
-        $trn_pdf->add_item( [ $transaction->voucher_no, $transaction->particulars, $transaction->balance ] );
-
-        $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), $transaction->balance );
-        $trn_pdf->add_total( __( 'TOTAL', 'erp' ), $transaction->balance );
+            $trn_pdf->add_total( __( 'SUB TOTAL', 'erp' ), erp_acct_format_amount( $transaction->balance ) );
+            $trn_pdf->add_total( __( 'TOTAL', 'erp' ), erp_acct_format_amount( $transaction->balance ) );
+            break;
     }
 
     $trn_pdf->render( $file_name, $output_method );
@@ -1253,9 +1417,9 @@ function erp_acct_generate_pdf( $request, $transaction, $file_name = '', $output
 /**
  * Generate and send pdf
  *
- * @param $request
- * @param $transaction
- * @param $file_name
+ * @param        $request
+ * @param        $transaction
+ * @param        $file_name
  * @param string $output_method
  *
  * @return bool
@@ -1265,7 +1429,7 @@ function erp_acct_send_email_with_pdf_attached( $request, $transaction, $file_na
         return;
     }
 
-    $trn_email = new \WeDevs\ERP\Accounting\Includes\Classes\Send_Email();
+    $trn_email = new \WeDevs\ERP\Accounting\Classes\SendEmail();
     $user_id   = null;
     $trn_id    = null;
     $result    = [];
@@ -1316,10 +1480,10 @@ function erp_acct_send_email_on_transaction( $voucher_no, $transaction ) {
         return;
     }
 
-    $user_id   = null;
-    $trn_id    = null;
-    $request   = [];
-    $result    = [];
+    $user_id = null;
+    $trn_id  = null;
+    $request = [];
+    $result  = [];
 
     $request['type']       = ! empty( $transaction['type'] ) ? $transaction['type'] : erp_acct_get_transaction_type( $voucher_no );
     $request['receiver'][] = ! empty( $transaction['email'] ) ? $transaction['email'] : [];
@@ -1485,7 +1649,7 @@ function erp_acct_get_transaction( $transaction_id ) {
 /**
  * Varify transaction hash
  *
- * @param $transaction_id
+ * @param        $transaction_id
  * @param string $transaction_type
  * @param string $hash_to_verify
  * @param string $algo
@@ -1508,7 +1672,7 @@ function erp_acct_verify_invoice_link_hash( $transaction_id, $transaction_type, 
 /**
  * Get unique transaction hash for sharing
  *
- * @param $transaction_id
+ * @param        $transaction_id
  * @param string $transaction_type
  * @param string $algo
  *
@@ -1533,10 +1697,14 @@ function erp_acct_get_invoice_link_hash( $transaction_id, $transaction_type, $al
  * @return string
  */
 function erp_acct_get_pdf_filename( $voucher_no ) {
+    global $wp_filesystem;
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    WP_Filesystem();
+
     $inv_dir = WP_CONTENT_DIR . '/uploads/erp-pdfs/';
 
     if ( ! file_exists( $inv_dir ) ) {
-        mkdir( $inv_dir, 0777, true );
+        $wp_filesystem->mkdir( $inv_dir, 0777, true );
     }
 
     $pdf_file = $inv_dir . "voucher_{$voucher_no}.pdf";
@@ -1553,21 +1721,17 @@ function erp_acct_get_pdf_filename( $voucher_no ) {
 function erp_acct_insert_data_into_people_trn_details( $transaction, $voucher_no ) {
     global $wpdb;
 
-    $data = [];
-
     if ( ! empty( $transaction['customer_id'] ) ) {
         $people_id = $transaction['customer_id'];
+    } elseif ( ! empty( $transaction['vendor_id'] ) ) {
+        $people_id = $transaction['vendor_id'];
     } else {
-        if ( ! empty( $transaction['vendor_id'] ) ) {
-            $people_id = $transaction['vendor_id'];
-        } else {
-            $people_id = $transaction['people_id'];
-        }
+        $people_id = $transaction['people_id'];
     }
 
     $date = ! empty( $transaction['trn_date'] ) ? $transaction['trn_date'] : $transaction['date'];
 
-    $wpdb->insert(
+    $inserted = $wpdb->insert(
         $wpdb->prefix . 'erp_acct_people_trn_details',
         [
             'people_id'   => $people_id,
@@ -1582,6 +1746,13 @@ function erp_acct_insert_data_into_people_trn_details( $transaction, $voucher_no
             'updated_by'  => $transaction['updated_by'],
         ]
     );
+
+    if ( ! $inserted ) {
+        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+        throw new \Exception( __( 'Failed to create people transaction details', 'erp' ) );
+    }
+
+    return $wpdb->insert_id;
 }
 
 /**
@@ -1613,7 +1784,7 @@ function erp_acct_pdf_abs_path_to_url( $voucher_no ) {
 /**
  * Get formatted transaction status for pdf voucher
  *
- * @since 1.8.0
+ * @since  1.8.0
  *
  * @param int|string $trn_status
  *
@@ -1633,4 +1804,17 @@ function erp_acct_get_formatted_status( $trn_status ) {
     }
 
     return $status;
+}
+
+/**
+ * Formats amount with currency in appropriate form.
+ *
+ * @since 1.10.4
+ *
+ * @param int|float|string $amount
+ *
+ * @return string
+ */
+function erp_acct_format_amount( $amount ) {
+    return str_replace( '&nbsp;', ' ', erp_acct_get_price( $amount ) );
 }

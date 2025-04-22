@@ -1,13 +1,14 @@
 <?php
-$tab            = ( isset( $_GET['tab'] ) && ! empty( $_GET['tab'] ) ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'own';
-$sub_section    = ( isset( $_GET['sub-section'] ) && ! empty( $_GET['sub-section'] ) ) ? sanitize_text_field( wp_unslash( $_GET['sub-section'] ) ) : '';
+$tab            = ! empty( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'own';
+$sub_section    = ! empty( $_GET['sub-section'] ) ? sanitize_text_field( wp_unslash( $_GET['sub-section'] ) ) : '';
 $schedules_data = erp_crm_get_schedule_data( $tab );
 ?>
 <div class="wrap erp erp-crm-schedules" id="wp-erp">
     <h2>
-        <?php esc_attr_e( 'Tasks', 'erp' ); ?>
+        <?php esc_html_e( 'Tasks', 'erp' ); ?>
         <?php
         if ( $sub_section !== 'tasks' ) :
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
             echo erp_help_tip( esc_html__( 'Click on the date to create a schedule.', 'erp' ) );
         endif;
         ?>
@@ -17,8 +18,8 @@ $schedules_data = erp_crm_get_schedule_data( $tab );
 
     <?php if ( current_user_can( erp_crm_get_manager_role() ) ) { ?>
         <h2 class="nav-tab-wrapper erp-nav-tab-wrapper">
-            <a class="nav-tab <?php echo $tab == 'own' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url_raw( add_query_arg( [ 'page'=>'erp-crm', 'section' => 'task', 'sub-section' => 'schedules', 'tab' => 'own' ], admin_url( 'admin.php' ) ) ); ?>"><?php esc_attr_e( 'My Schedules', 'erp' ); ?></a>
-            <a class="nav-tab <?php echo $tab == 'all' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url_raw( add_query_arg( [ 'page'=>'erp-crm', 'section' => 'task', 'sub-section' => 'schedules', 'tab' => 'all' ], admin_url( 'admin.php' ) ) ); ?>"><?php esc_attr_e( 'All Schedules', 'erp' ); ?></a>
+            <a class="nav-tab <?php echo $tab == 'own' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url_raw( add_query_arg( [ 'page'=>'erp-crm', 'section' => 'task', 'sub-section' => 'schedules', 'tab' => 'own' ], admin_url( 'admin.php' ) ) ); ?>"><?php esc_html_e( 'My Schedules', 'erp' ); ?></a>
+            <a class="nav-tab <?php echo $tab == 'all' ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url_raw( add_query_arg( [ 'page'=>'erp-crm', 'section' => 'task', 'sub-section' => 'schedules', 'tab' => 'all' ], admin_url( 'admin.php' ) ) ); ?>"><?php esc_html_e( 'All Schedules', 'erp' ); ?></a>
         </h2>
     <?php } ?>
 
@@ -54,7 +55,7 @@ $schedules_data = erp_crm_get_schedule_data( $tab );
             },
             editable: false,
             eventLimit: true,
-            events: <?php echo json_encode( $schedules_data ); ?>,
+            events: <?php echo wp_json_encode( $schedules_data ); ?>,
             eventClick: function(calEvent, jsEvent, view) {
                 var scheduleId = calEvent.schedule.id;
                 var title      = ( calEvent.schedule.extra.schedule_title ) ? calEvent.schedule.extra.schedule_title : '<?php esc_attr_e( 'Log Details', 'erp' ); ?>';
@@ -124,7 +125,6 @@ $schedules_data = erp_crm_get_schedule_data( $tab );
             },
 
             dayClick: function(date, jsEvent, view) {
-
                 $.erpPopup({
                     title: ( new Date( date) < new Date() ) ? '<?php esc_attr_e( 'Add new Log', 'erp' ); ?>' : '<?php esc_attr_e( 'Add new Schedule', 'erp' ); ?>',
                     button: ( new Date( date) < new Date() ) ? '<?php esc_attr_e( 'Create Log', 'erp' ); ?>' : '<?php esc_attr_e( 'Create Schedule', 'erp' ); ?>',
@@ -212,7 +212,7 @@ $schedules_data = erp_crm_get_schedule_data( $tab );
 
                                 if ( res.end_date ) {
                                     if ( new Date( res.start_date ) < new Date() ) {
-                                       var time = date( 'g:ia', strtotime( $schedule['start_date'] ) );
+                                       var time = Date( 'g:ia', strtotime( $schedule['start_date'] ) );
                                     } else {
                                         if ( wperp.timeFormat( res.start_date ) == wperp.timeFormat( res.end_date ) ) {
                                             var time = wperp.timeFormat( res.start_date );
@@ -232,8 +232,10 @@ $schedules_data = erp_crm_get_schedule_data( $tab );
                                 var color = new Date( res.start_date ) < new Date() ? '#f05050' : '#03c756';
 
                                 // Add in current calendar only if current user id in invited_user array or not in own tab
-                                const currentUserId = <?php echo get_current_user_id() ?>;
-                                const currentTab    = "<?php echo $tab ?>";
+                                const currentUserId = <?php
+                                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+                                    echo get_current_user_id()?>;
+                                const currentTab    = "<?php echo esc_attr( $tab ); ?>";
                                 const existsArray   = res.extra.invited_user.filter(x => parseInt(x.id) === currentUserId);
 
                                 if( existsArray.length > 0 || currentTab !== 'own' ){

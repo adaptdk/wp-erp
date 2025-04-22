@@ -50,7 +50,7 @@ function get_employee_breakdown_by_age( $employees ) {
     $_65_plus   = 0;
 
     foreach ( $employees as $employee ) {
-        if ( !is_valid_date( $employee->date_of_birth ) ) {
+        if ( ! erp_is_valid_date( $employee->date_of_birth ) ) {
             continue;
         }
 
@@ -118,7 +118,13 @@ function erp_hr_get_gender_count( $department = null ) {
     if ( null == $department ) {
         $all_user_id = $wpdb->get_col( "SELECT user_id FROM {$wpdb->prefix}erp_hr_employees WHERE status = 'active'" );
     } else {
-        $all_user_id = $wpdb->get_col( "SELECT user_id FROM {$wpdb->prefix}erp_hr_employees WHERE department = $department AND status = 'active'" );
+        $all_user_id = $wpdb->get_col( 
+            $wpdb->prepare(
+                "SELECT user_id FROM {$wpdb->prefix}erp_hr_employees WHERE department = %d AND status = %s",
+                $department,
+                'active'
+            )
+        );
     }
 
     if ( $all_user_id ) {
@@ -275,7 +281,7 @@ function erp_hr_get_headcount( $date = '', $dept = '', $query_type = '' ) {
 
     if ( 'month' == $query_type ) {
         foreach ( $all_user_data as $user_data ) {
-            if ( isset( $user_data['status'] ) && 'terminated' == $user_data['status'] && date( 'Y-m', strtotime( $user_data['termination_date'] ) ) > $date ) {
+            if ( isset( $user_data['status'] ) && 'terminated' == $user_data['status'] && gmdate( 'Y-m', strtotime( $user_data['termination_date'] ) ) > $date ) {
                 $count++;
                 continue;
             }
@@ -308,27 +314,31 @@ function erp_hr_get_headcount( $date = '', $dept = '', $query_type = '' ) {
     return $count;
 }
 
-/**
- * Check if a string is valid date
- *
- * @since 0.1
- *
- * @return bool
- */
-function is_valid_date( $str ) {
-    try {
-        $dt = new DateTime( trim( $str ) );
-    } catch ( Exception $e ) {
-        return false;
-    }
+if ( ! function_exists( 'is_valid_date' ) ) :
+    /**
+     * Check if a string is valid date
+     *
+     * @since 0.1
+     *
+     * @deprecated 1.10.1
+     *
+     * @return bool
+     */
+    function is_valid_date( $str ) {
+        try {
+            $dt = new DateTime( trim( $str ) );
+        } catch ( Exception $e ) {
+            return false;
+        }
 
-    $month = $dt->format( 'm' );
-    $day   = $dt->format( 'd' );
-    $year  = $dt->format( 'Y' );
+        $month = $dt->format( 'm' );
+        $day   = $dt->format( 'd' );
+        $year  = $dt->format( 'Y' );
 
-    if ( checkdate( $month, $day, $year ) ) {
-        return true;
-    } else {
-        return false;
+        if ( checkdate( $month, $day, $year ) ) {
+            return true;
+        } else {
+            return false;
+        }
     }
-}
+endif;

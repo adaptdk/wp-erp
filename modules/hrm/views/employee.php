@@ -1,22 +1,42 @@
 <?php
-$employee_table = new \WeDevs\ERP\HRM\Employee_List_Table();
+$employee_table = new \WeDevs\ERP\HRM\EmployeeListTable();
 $employee_table->prepare_items();
+$employee_name = ! empty( $_GET['employee_name'] ) ? sanitize_text_field( wp_unslash( $_GET['employee_name'] ) ) : '';
 ?>
 
 <div class="wrap erp-hr-employees" id="wp-erp">
 
     <h2>
-        <?php esc_html_e( 'People', 'erp' ); ?>
+        <?php esc_html_e( 'People > Employees', 'erp' ); ?>
 
         <?php if ( current_user_can( 'erp_create_employee' ) ) : ?>
             <a href="#" id="erp-employee-new" class="add-new-h2"><?php esc_html_e( 'Add New', 'erp' ); ?></a>
+
+            <div class="erp-btn-group">
+                <button id="erp-hr-employee-import-csv"
+                    data-title="<?php esc_attr_e( 'Import Employee', 'erp' ); ?>"
+                    data-btn="<?php esc_attr_e( 'Import', 'erp' ); ?>">
+                    <?php esc_html_e( 'Import', 'erp' ); ?>
+                </button>
+
+                <button id="erp-hr-employee-export-csv"
+                    data-title="<?php esc_attr_e( 'Export Employee', 'erp' ); ?>"
+                    data-btn="<?php esc_attr_e( 'Export', 'erp' ); ?>">
+                    <?php esc_html_e( 'Export', 'erp' ); ?>
+                </button>
+            </div>
         <?php endif; ?>
 
         <form method="get">
-            <input type="hidden" name="page" value="erp-hr">
-            <input type="hidden" name="section" value="people">
-            <input type="hidden" name="sub-section" value="employee">
-            <?php $employee_table->search_box( __( 'Search', 'erp' ), 'erp-employee-search' ); ?>
+            <div class='wperp-filter-panel-body'>
+                <div class='input-component people_live_search'>
+                    <input type="hidden" name="page" value="erp-hr">
+                    <input type="hidden" name="section" value="people">
+                    <input type="hidden" name="sub-section" value="employee">
+                    <?php $employee_table->search_box( __( 'Search', 'erp' ), 'erp-employee-search' ); ?>
+                    <span id='live-employee-search'></span>
+                </div>
+            </div>
         </form>
     </h2>
 
@@ -52,6 +72,7 @@ $employee_table->prepare_items();
         include WPERP_HRM_VIEWS . '/employee/empty-employee.php';
         $output = ob_get_contents();
         ob_get_clean();
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         echo $output;
 
         return;

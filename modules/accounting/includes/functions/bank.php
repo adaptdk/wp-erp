@@ -15,7 +15,7 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
     global $wpdb;
 
     $args               = [];
-    $args['start_date'] = date( 'Y-m-d' );
+    $args['start_date'] = gmdate( 'Y-m-d' );
 
     $closest_fy_date    = erp_acct_get_closest_fn_year_date( $args['start_date'] );
     $args['start_date'] = $closest_fy_date['start_date'];
@@ -31,7 +31,7 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
     $where       = '';
 
     if ( $with_cash && ! $no_bank ) {
-        $where       = " WHERE chart_id = {$chart_id}";
+        $where       = $wpdb->prepare( " WHERE chart_id = %d", $chart_id );
         $cash_ledger = " OR slug = 'cash' ";
         $show_all    = true;
     }
@@ -43,14 +43,14 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
     }
 
     if ( ! $with_cash && ! $no_bank ) {
-        $where       = " WHERE chart_id = {$chart_id}";
+        $where       = $wpdb->prepare(  " WHERE chart_id = %d", $chart_id );
         $cash_ledger = '';
         $bank_only   = true;
     }
 
     if ( ! $show_balance ) {
         $query   = "SELECT * FROM $ledgers" . $where . $cash_ledger;
-        $results = $wpdb->get_results( $query, ARRAY_A );
+        $results = $wpdb->get_results( $query, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         return $results;
     }
@@ -63,7 +63,7 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
               Where ld.ledger_id IN ($sub_query)
               Group BY ld.ledger_id";
 
-    $temp_accts = $wpdb->get_results( $query, ARRAY_A );
+    $temp_accts = $wpdb->get_results( $query, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
     if ( $with_cash ) {
         // little hack to solve -> opening_balance cash entry with no ledger_details cash entry
@@ -86,7 +86,7 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
     $bank_accts = [];
     $uniq_accts = [];
 
-    $ledger_map = \WeDevs\ERP\Accounting\Includes\Classes\Ledger_Map::get_instance();
+    $ledger_map = \WeDevs\ERP\Accounting\Classes\LedgerMap::get_instance();
     $ledger_id  = $ledger_map->get_ledger_id_by_slug( 'cash' );
 
     $c_balance = get_ledger_balance_with_opening_balance( $ledger_id, $args['start_date'], $args['end_date'] );
@@ -132,7 +132,7 @@ function erp_acct_get_banks( $show_balance = false, $with_cash = false, $no_bank
  */
 function erp_acct_get_dashboard_banks() {
     $args               = [];
-    $args['start_date'] = date( 'Y-m-d' );
+    $args['start_date'] = gmdate( 'Y-m-d' );
 
     $closest_fy_date    = erp_acct_get_closest_fn_year_date( $args['start_date'] );
     $args['start_date'] = $closest_fy_date['start_date'];
@@ -140,7 +140,7 @@ function erp_acct_get_dashboard_banks() {
 
     $results = [];
 
-    $ledger_map = \WeDevs\ERP\Accounting\Includes\Classes\Ledger_Map::get_instance();
+    $ledger_map = \WeDevs\ERP\Accounting\Classes\LedgerMap::get_instance();
     $ledger_id  = $ledger_map->get_ledger_id_by_slug( 'cash' );
 
     $c_balance = get_ledger_balance_with_opening_balance( $ledger_id, $args['start_date'], $args['end_date'] );
@@ -286,8 +286,8 @@ function erp_acct_get_account_debit_credit( $ledger_id ) {
 function erp_acct_perform_transfer( $item ) {
     global $wpdb;
     $created_by = get_current_user_id();
-    $created_at = date( 'Y-m-d' );
-    $updated_at = date( 'Y-m-d' );
+    $created_at = gmdate( 'Y-m-d' );
+    $updated_at = gmdate( 'Y-m-d' );
     $updated_by = $created_by;
     $currency   = erp_get_currency( true );
 
@@ -454,14 +454,20 @@ function erp_acct_get_single_voucher( $id ) {
  * @return array
  */
 function erp_acct_get_balance_by_ledger( $id ) {
-    if ( is_array( $id ) ) {
-        $id = "'" . implode( "','", $id ) . "'";
-    }
-
     global $wpdb;
     $table_name = $wpdb->prefix . 'erp_acct_ledger_details';
-    $query      = "Select ld.ledger_id,SUM(ld.debit - ld.credit) as balance From $table_name as ld Where ld.ledger_id IN ($id) Group BY ld.ledger_id ";
-    $result     = $wpdb->get_results( $query, ARRAY_A );
+
+    // Generate placeholders based on the number of elements in the $id array
+    $placeholders = array_fill( 0, count( $id ), '%s' );
+    $placeholder_string = implode( ',', $placeholders );
+
+    $result = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ld.ledger_id, SUM(ld.debit - ld.credit) AS balance 
+        FROM $table_name AS ld 
+        WHERE ld.ledger_id IN ($placeholder_string) 
+        GROUP BY ld.ledger_id",
+        $id
+    ), ARRAY_A );
 
     return $result;
 }

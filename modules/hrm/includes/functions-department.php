@@ -74,12 +74,12 @@ function erp_hr_get_departments( $args = [] ) {
 
     $last_changed  = erp_cache_get_last_changed( 'hrm', 'department' );
     $cache_key     = 'erp-get-departments-' . md5( serialize( $args ) ) . " : $last_changed";
-    // $departments   = wp_cache_get( $cache_key, 'erp' );
+    $departments   = wp_cache_get( $cache_key, 'erp' );
 
-    // if ( false === $departments ) {
+    if ( false === $departments ) {
         $department = new \WeDevs\ERP\HRM\Models\Department();
 
-        if ( !empty( $args['s'] ) ) {
+        if ( ! empty( $args['s'] ) ) {
             if ( isset( $_GET['s'] ) ) {
                 $s = sanitize_text_field( wp_unslash( $_GET['s'] ) );
             } else {
@@ -100,7 +100,7 @@ function erp_hr_get_departments( $args = [] ) {
         $departments = [];
 
         if ( $results ) {
-            foreach ( $results as $key => $row ) {
+            foreach ( $results as $row ) {
                 if ( true === $args['no_object'] ) {
                     $departments[] = $row;
                 } else {
@@ -110,7 +110,7 @@ function erp_hr_get_departments( $args = [] ) {
         }
 
         wp_cache_set( $cache_key, $departments, 'erp' );
-    // }
+    }
 
     return $departments;
 }
@@ -291,4 +291,16 @@ function erp_hr_match_user_dept_lead_with_current_user( $user_id ) {
     }
 
     return false;
+}
+
+
+/**
+ * Get all departments with title and id
+ * example output: [1 => 'Department 1', 2 => 'Department 2']
+ * @return array
+ */
+function erp_hr_get_departments_fresh() {
+    $departments = \WeDevs\ERP\HRM\Models\Department::all(['id', 'title']);
+    return array_column( $departments->toArray(), 'title', 'id');
+
 }

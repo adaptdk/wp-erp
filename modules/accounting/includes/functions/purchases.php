@@ -33,13 +33,13 @@ function erp_acct_get_purchases( $args = [] ) {
 
     $sql  = 'SELECT';
     $sql .= $args['count'] ? ' COUNT( id ) as total_number ' : ' * ';
-    $sql .= "FROM {$wpdb->prefix}erp_acct_purchase ORDER BY {$args['orderby']} {$args['order']} {$limit}";
+    $sql .= $wpdb->prepare( "FROM {$wpdb->prefix}erp_acct_purchase Where %d=%d ORDER BY {$args['orderby']} {$args['order']} %s", 1, 1, $limit);
 
     if ( $args['count'] ) {
-        return $wpdb->get_var( $sql );
+        return $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     }
 
-    return $wpdb->get_results( $sql, ARRAY_A );
+    return $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**
@@ -55,35 +55,37 @@ function erp_acct_get_purchase( $purchase_no ) {
     $sql = $wpdb->prepare(
         "SELECT
 
-    voucher.editable,
-    purchase.id,
-    purchase.voucher_no,
-    purchase.vendor_id,
-    purchase.trn_date,
-    purchase.due_date,
-    purchase.amount,
-    purchase.vendor_name,
-    purchase.ref,
-    purchase.status,
-    purchase.purchase_order,
-    purchase.attachments,
-    purchase.particulars,
-    purchase.created_at,
-    purchase.tax,
-    purchase.tax_zone_id,
+            voucher.editable,
+            purchase.id,
+            purchase.voucher_no,
+            purchase.vendor_id,
+            purchase.trn_date,
+            purchase.due_date,
+            purchase.amount,
+            purchase.vendor_name,
+            purchase.ref,
+            purchase.status,
+            purchase.purchase_order,
+            purchase.attachments,
+            purchase.particulars,
+            purchase.created_at,
+            purchase.tax,
+            purchase.tax_zone_id,
 
-    purchase_acc_detail.purchase_no,
-    purchase_acc_detail.debit,
-    purchase_acc_detail.credit
+            purchase_acc_detail.purchase_no,
+            purchase_acc_detail.debit,
+            purchase_acc_detail.credit
 
-    FROM {$wpdb->prefix}erp_acct_purchase AS purchase
-    LEFT JOIN {$wpdb->prefix}erp_acct_voucher_no as voucher ON purchase.voucher_no = voucher.id
-    LEFT JOIN {$wpdb->prefix}erp_acct_purchase_account_details AS purchase_acc_detail ON purchase.voucher_no = purchase_acc_detail.trn_no
-    WHERE purchase.voucher_no = %d",
+        FROM {$wpdb->prefix}erp_acct_purchase AS purchase
+        LEFT JOIN {$wpdb->prefix}erp_acct_voucher_no as voucher ON purchase.voucher_no = voucher.id
+        LEFT JOIN {$wpdb->prefix}erp_acct_purchase_account_details AS purchase_acc_detail ON purchase.voucher_no = purchase_acc_detail.trn_no
+        WHERE purchase.voucher_no = %d",
         $purchase_no
     );
 
-    $row                = $wpdb->get_row( $sql, ARRAY_A );
+    erp_disable_mysql_strict_mode();
+
+    $row                = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     $row['line_items']  = erp_acct_format_purchase_line_items( $purchase_no );
     $row['attachments'] = unserialize( $row['attachments'] );
     $row['total_due']   = $row['credit'] - $row['debit'];
@@ -123,7 +125,9 @@ function erp_acct_format_purchase_line_items( $voucher_no ) {
         $voucher_no
     );
 
-    $results = $wpdb->get_results( $sql, ARRAY_A );
+    erp_disable_mysql_strict_mode();
+
+    $results = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
     // calculate every line total
     foreach ( $results as $key => $value ) {
@@ -145,9 +149,9 @@ function erp_acct_insert_purchase( $data ) {
 
     $created_by         = get_current_user_id();
     $voucher_no         = null;
-    $data['created_at'] = date( 'Y-m-d' );
+    $data['created_at'] = gmdate( 'Y-m-d' );
     $data['created_by'] = $created_by;
-    $data['updated_at'] = date( 'Y-m-d' );
+    $data['updated_at'] = gmdate( 'Y-m-d' );
     $data['updated_by'] = $created_by;
 
     $purchase_type_order = 1;
@@ -170,9 +174,8 @@ function erp_acct_insert_purchase( $data ) {
             ]
         );
 
-        $voucher_no  = $wpdb->insert_id;
-        $purchase_no = $voucher_no;
-
+        $voucher_no    = $wpdb->insert_id;
+        $purchase_no   = $voucher_no;
         $purchase_data = erp_acct_get_formatted_purchase_data( $data, $voucher_no );
 
         $wpdb->insert(
@@ -207,30 +210,35 @@ function erp_acct_insert_purchase( $data ) {
                 'product_id' => $item['product_id'],
                 'qty'        => $item['qty'],
                 'price'      => $item['unit_price'],
-                'tax'        => $item['tax_amount'],
+                'tax'        => isset( $item['tax_amount'] ) ? $item['tax_amount'] : 0,
+                'tax_cat_id' => isset( $item['tax_cat_id'] ) ? $item['tax_cat_id'] : null,
                 'amount'     => $item['item_total'],
                 'created_at' => $purchase_data['created_at'],
                 'created_by' => $created_by,
                 'updated_at' => $purchase_data['updated_at'],
                 'updated_by' => $purchase_data['updated_by'],
             ] );
-        }
 
-        $details_id = $wpdb->insert_id;
+            $details_id = $wpdb->insert_id;
 
-        if ( isset( $purchase_data['tax_rate'] ) && isset( $purchase_data['tax_rate']['agency_id'] ) ) {
-            $tax_rate_agency = get_purchase_tax_rate_with_agency( $purchase_data['tax_rate']['id'], $item['tax_cat_id'] );
+            if ( isset( $purchase_data['tax_rate'] ) && isset( $purchase_data['tax_rate']['id'] ) ) {
+                $tax_rate_agency = erp_acct_get_tax_rate_with_agency( $purchase_data['tax_rate']['id'], $item['tax_cat_id'] );
 
-            $wpdb->insert(
-                $wpdb->prefix . 'erp_acct_purchase_details_tax',
-                [
-                    'invoice_details_id' => $details_id,
-                    'agency_id'          => isset( $purchase_data['tax_rate']['agency_id'] ) ? $purchase_data['tax_rate']['agency_id'] : null,
-                    'tax_rate'           => $tax_rate_agency->tax_rate,
-                    'updated_at'         => $purchase_data['updated_at'],
-                    'updated_by'         => $purchase_data['updated_by'],
-                ]
-            );
+                foreach ( $tax_rate_agency as $tra ) {
+                    $wpdb->insert(
+                        $wpdb->prefix . 'erp_acct_purchase_details_tax',
+                        [
+                            'invoice_details_id' => $details_id,
+                            'agency_id'          => $tra['agency_id'],
+                            'tax_rate'           => $tra['tax_rate'],
+                            'created_at'         => $purchase_data['created_at'],
+                            'created_by'         => $created_by,
+                            'updated_at'         => $purchase_data['updated_at'],
+                            'updated_by'         => $purchase_data['updated_by'],
+                        ]
+                    );
+                }
+            }
         }
 
         do_action( 'erp_acct_after_purchase_create', $data, $voucher_no );
@@ -289,22 +297,6 @@ function erp_acct_insert_purchase( $data ) {
 }
 
 /**
- * Tax category with agency
- */
-function get_purchase_tax_rate_with_agency( $tax_id, $tax_cat_id ) {
-    global $wpdb;
-
-    return $wpdb->get_row(
-        $wpdb->prepare(
-            "SELECT agency_id, tax_rate FROM {$wpdb->prefix}erp_acct_tax_cat_agency where tax_id = %d and tax_cat_id = %d",
-            absint( $tax_id ),
-            absint( $tax_cat_id )
-        ),
-        OBJECT
-    );
-}
-
-/**
  * Update a purchase
  *
  * @param $purchase_data
@@ -325,9 +317,9 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
     $draft               = 1;
     $voucher_no          = null;
 
-    $data['created_at'] = date( 'Y-m-d' );
+    $data['created_at'] = gmdate( 'Y-m-d' );
     $data['created_by'] = $user_id;
-    $data['updated_at'] = date( 'Y-m-d' );
+    $data['updated_at'] = gmdate( 'Y-m-d' );
     $data['updated_by'] = $user_id;
     $currency           = erp_get_currency( true );
 
@@ -375,7 +367,7 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
 
             $wpdb->delete( $wpdb->prefix . 'erp_acct_purchase_details', [ 'trn_no' => $purchase_id ] );
 
-            $wpdb->query( "DELETE FROM {$wpdb->prefix}erp_acct_purchase_details_tax WHERE invoice_details_id IN($prev_detail_ids)" ); // delete previous tax data
+            $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}erp_acct_purchase_details_tax WHERE invoice_details_id IN(%s)", $prev_detail_ids ) ); // delete previous tax data
 
             $items = $purchase_data['purchase_details'];
 
@@ -400,20 +392,21 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
 
                 $details_id = $wpdb->insert_id;
 
-                if(isset($purchase_data['tax_rate']) && isset($purchase_data['tax_rate']['agency_id'])){
+                if ( isset( $purchase_data['tax_rate'] ) ){
+                    $tax_rate_agency = erp_acct_get_tax_rate_with_agency( $purchase_data['tax_rate']['id'], $item['tax_cat_id'] );
 
-                    $tax_rate_agency = get_purchase_tax_rate_with_agency( $purchase_data['tax_rate']['id'], $item['tax_cat_id'] );
-
-                    $wpdb->insert(
-                        $wpdb->prefix . 'erp_acct_purchase_details_tax',
-                        [
-                            'invoice_details_id' => $details_id,
-                            'agency_id'          => isset($purchase_data['tax_rate']['agency_id']) ? $purchase_data['tax_rate']['agency_id'] : null,
-                            'tax_rate'           => $tax_rate_agency->tax_rate ,
-                            'updated_at'         => $purchase_data['updated_at'],
-                            'updated_by'         => $purchase_data['updated_by']
-                        ]
-                    );
+                    foreach ( $tax_rate_agency as $tra ) {
+                        $wpdb->insert(
+                            $wpdb->prefix . 'erp_acct_purchase_details_tax',
+                            [
+                                'invoice_details_id' => $details_id,
+                                'agency_id'          => $tra['agency_id'],
+                                'tax_rate'           => $tra['tax_rate'],
+                                'updated_at'         => $purchase_data['updated_at'],
+                                'updated_by'         => $purchase_data['updated_by'],
+                            ]
+                        );
+                    }
                 }
             }
 
@@ -445,7 +438,7 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
             $wpdb->query( $wpdb->prepare( "CREATE TEMPORARY TABLE acct_tmptable SELECT * FROM {$wpdb->prefix}erp_acct_purchase WHERE voucher_no = %d", $purchase_id ) );
             $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE acct_tmptable SET id = %d, voucher_no = %d, particulars = 'Contra entry for voucher no \#%d', created_at = '%s'",
+                    "UPDATE acct_tmptable SET id = %d, voucher_no = %d, particulars = 'Contra entry for voucher no \#%d', created_at = %s",
                     0,
                     $voucher_no,
                     $purchase_id,
@@ -459,7 +452,7 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
             $status_closed = 7;
             $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$wpdb->prefix}erp_acct_purchase SET status = %d, updated_at ='%s', updated_by = %d WHERE voucher_no IN (%d, %d)",
+                    "UPDATE {$wpdb->prefix}erp_acct_purchase SET status = %d, updated_at =%s, updated_by = %d WHERE voucher_no IN (%d, %d)",
                     $status_closed,
                     $data['updated_at'],
                     $user_id,
@@ -479,7 +472,7 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
                         'qty'        => $item['qty'],
                         'price'      => $item['unit_price'],
                         'amount'     => (float) $item['qty'] * (float) $item['unit_price'],
-                        'updated_at' => date( 'Y-m-d H:i:s' ),
+                        'updated_at' => gmdate( 'Y-m-d H:i:s' ),
                         'updated_by' => $user_id,
                     ]
                 );
@@ -493,7 +486,7 @@ function erp_acct_update_purchase( $purchase_data, $purchase_id ) {
                     'trn_date'    => $purchase_data['trn_date'],
                     'particulars' => $purchase_data['particulars'],
                     'debit'       => $old_purchase['amount'],
-                    'updated_at'  => date( 'Y-m-d H:i:s' ),
+                    'updated_at'  => gmdate( 'Y-m-d H:i:s' ),
                     'updated_by'  => $user_id,
                 ]
             );
@@ -572,7 +565,7 @@ function erp_acct_convert_order_to_purchase( $purchase_data, $purchase_id ) {
                 'qty'        => $item['qty'],
                 'price'      => $item['unit_price'],
                 'amount'     => (float) $item['qty'] * (float) $item['unit_price'],
-                'updated_at' => date( 'Y-m-d' ),
+                'updated_at' => gmdate( 'Y-m-d' ),
                 'updated_by' => $user_id,
             ] );
         }
@@ -583,7 +576,7 @@ function erp_acct_convert_order_to_purchase( $purchase_data, $purchase_id ) {
             'trn_date'    => $purchase_data['trn_date'],
             'particulars' => $purchase_data['particulars'],
             'credit'      => $purchase_data['amount'],
-            'updated_at'  => date( 'Y-m-d' ),
+            'updated_at'  => gmdate( 'Y-m-d' ),
             'updated_by'  => $user_id,
         ] );
 
@@ -655,8 +648,8 @@ function erp_acct_get_formatted_purchase_data( $data, $voucher_no ) {
     $purchase_data['vendor_id']       = isset( $data['vendor_id'] ) ? $data['vendor_id'] : 0;
     $purchase_data['vendor_name']     = $user_info->first_name . ' ' . $user_info->last_name;
     $purchase_data['billing_address'] = isset( $data['billing_address'] ) ? $data['billing_address'] : '';
-    $purchase_data['trn_date']        = isset( $data['trn_date'] ) ? $data['trn_date'] : date( 'Y-m-d' );
-    $purchase_data['due_date']        = isset( $data['due_date'] ) ? $data['due_date'] : date( 'Y-m-d' );
+    $purchase_data['trn_date']        = isset( $data['trn_date'] ) ? $data['trn_date'] : gmdate( 'Y-m-d' );
+    $purchase_data['due_date']        = isset( $data['due_date'] ) ? $data['due_date'] : gmdate( 'Y-m-d' );
     $purchase_data['amount']          = isset( $data['amount'] ) ? floatval( $data['amount'] ) : 0;
     $purchase_data['tax']             = isset( $data['tax'] ) ? floatval( $data['tax'] ) : 0;
     $purchase_data['tax_rate']        = isset( $data['tax_rate'] ) ?   $data['tax_rate']  : [];
@@ -667,7 +660,7 @@ function erp_acct_get_formatted_purchase_data( $data, $voucher_no ) {
     $purchase_data['ref']             = isset( $data['ref'] ) ? $data['ref'] : '';
     // translators: %s: voucher_no
     $purchase_data['particulars'] = ! empty( $data['particulars'] ) ? $data['particulars'] : sprintf( __( 'Purchase created with voucher no %s', 'erp' ), $voucher_no );
-    $purchase_data['created_at']  = date( 'Y-m-d' );
+    $purchase_data['created_at']  = gmdate( 'Y-m-d' );
     $purchase_data['created_by']  = isset( $data['created_by'] ) ? $data['created_by'] : '';
     $purchase_data['updated_at']  = isset( $data['updated_at'] ) ? $data['updated_at'] : '';
     $purchase_data['updated_by']  = isset( $data['updated_by'] ) ? $data['updated_by'] : '';
@@ -689,7 +682,7 @@ function erp_acct_get_formatted_purchase_data( $data, $voucher_no ) {
 function erp_acct_insert_purchase_data_into_ledger( $purchase_data ) {
     global $wpdb;
 
-    $ledger_map = \WeDevs\ERP\Accounting\Includes\Classes\Ledger_Map::get_instance();
+    $ledger_map = \WeDevs\ERP\Accounting\Classes\LedgerMap::get_instance();
     $purchase_ledger_id  = $ledger_map->get_ledger_id_by_slug( 'purchase' );
 
     if ( ! $purchase_ledger_id ) {
@@ -753,7 +746,7 @@ function erp_acct_insert_purchase_data_into_ledger( $purchase_data ) {
 function erp_acct_update_purchase_data_into_ledger( $purchase_data, $purchase_no ) {
     global $wpdb;
 
-    $ledger_map = \WeDevs\ERP\Accounting\Includes\Classes\Ledger_Map::get_instance();
+    $ledger_map = \WeDevs\ERP\Accounting\Classes\LedgerMap::get_instance();
     $ledger_id  = $ledger_map->get_ledger_id_by_slug( 'purchase' );
 
     if ( ! $ledger_id ) {
@@ -833,11 +826,13 @@ function erp_acct_get_due_purchases_by_vendor( $args ) {
         $args['order']
     );
 
+    erp_disable_mysql_strict_mode();
+
     if ( $args['count'] ) {
-        return $wpdb->get_var( $query );
+        return $wpdb->get_var( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     }
 
-    return $wpdb->get_results( $query, ARRAY_A );
+    return $wpdb->get_results( $query, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 }
 
 /**

@@ -30,8 +30,8 @@
                                         </div>
                                     </div>
                                     <div class="wperp-panel-footer">
-                                        <input type="reset" value="Cancel" class="wperp-btn btn--default" @click="toggleFilter">
-                                        <input type="submit" value="Submit" class="wperp-btn btn--primary" @click.prevent="filterList">
+                                        <input type="reset" :value="__( 'Cancel', 'erp' )" class="wperp-btn btn--default" @click="toggleFilter">
+                                        <input type="submit" :value="__( 'Submit', 'erp' )" class="wperp-btn btn--primary" @click.prevent="filterList">
                                     </div>
                                 </div>
                             </div>
@@ -96,7 +96,7 @@ export default {
                 }
             ],
             columns: {
-                trn_date   : { label: __('Transaction Date', 'erp') },
+                trn_date   : { label: __('Transaction Date', 'erp'), isColPrimary: true },
                 created_at : { label: __('Created At', 'erp') },
                 voucher_no : { label: __('Voucher No', 'erp') },
                 particulars: { label: __('Particulars', 'erp') },

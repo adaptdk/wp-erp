@@ -36,11 +36,11 @@ function erp_acct_get_all_journals( $args = [] ) {
         $limit = '';
 
         if ( ! empty( $args['start_date'] ) ) {
-            $where .= "WHERE journal.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+            $where .= $wpdb->prepare( "WHERE journal.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date']);
         }
 
         if ( '-1' === $args['number'] ) {
-            $limit = "LIMIT {$args['number']} OFFSET {$args['offset']}";
+            $limit = $wpdb->prepare( "LIMIT %d OFFSET %d", $args['number'], $args['offset']);
         }
 
         $sql = 'SELECT';
@@ -55,13 +55,13 @@ function erp_acct_get_all_journals( $args = [] ) {
         $sql .= " ON journal.voucher_no = journal_detail.trn_no {$where} GROUP BY journal.voucher_no ORDER BY journal.{$args['orderby']} {$args['order']} {$limit}";
 
         if ( $args['count'] ) {
-            $wpdb->get_results( $sql );
+            $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             $journals_count = $wpdb->num_rows;
 
             wp_cache_set( $cache_key_count, $journals_count, 'erp-accounting' );
         } else {
-            $journals = $wpdb->get_results( $sql, ARRAY_A );
+            $journals = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             wp_cache_set( $cache_key, $journals, 'erp-accounting' );
         }
@@ -84,25 +84,27 @@ function erp_acct_get_all_journals( $args = [] ) {
 function erp_acct_get_journal( $journal_no ) {
     global $wpdb;
 
-    $sql = "SELECT
+    $sql = $wpdb->prepare( "SELECT
 
-    journal.id,
-    journal.voucher_no,
-    journal.trn_date,
-    journal.ref,
-    journal.voucher_amount,
-    journal.attachments,
-    journal.particulars,
-    journal.created_at,
-    journal.created_by,
-    journal.updated_at,
-    journal.updated_by
+                journal.id,
+                journal.voucher_no,
+                journal.trn_date,
+                journal.ref,
+                journal.voucher_amount,
+                journal.attachments,
+                journal.particulars,
+                journal.created_at,
+                journal.created_by,
+                journal.updated_at,
+                journal.updated_by
 
-    FROM {$wpdb->prefix}erp_acct_journals as journal
-    LEFT JOIN {$wpdb->prefix}erp_acct_journal_details as journal_detail ON journal.voucher_no = journal_detail.trn_no
-    WHERE journal.voucher_no = {$journal_no} LIMIT 1";
+            FROM {$wpdb->prefix}erp_acct_journals as journal
+            LEFT JOIN {$wpdb->prefix}erp_acct_journal_details as journal_detail ON journal.voucher_no = journal_detail.trn_no
+            WHERE journal.voucher_no = %d LIMIT 1", $journal_no );
 
-    $row                = $wpdb->get_row( $sql, ARRAY_A );
+    erp_disable_mysql_strict_mode();
+
+    $row                = $wpdb->get_row( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     $rows               = $row;
     $rows['line_items'] = erp_acct_format_journal_data( $row, $journal_no );
 
@@ -120,7 +122,7 @@ function erp_acct_insert_journal( $data ) {
     global $wpdb;
 
     $created_by         = get_current_user_id();
-    $data['created_at'] = date( 'Y-m-d H:i:s' );
+    $data['created_at'] = gmdate( 'Y-m-d H:i:s' );
     $data['created_by'] = $created_by;
 
     $voucher_no = null;
@@ -219,7 +221,7 @@ function erp_acct_update_journal( $data, $journal_no ) {
     global $wpdb;
 
     $updated_by         = get_current_user_id();
-    $data['updated_at'] = date( 'Y-m-d H:i:s' );
+    $data['updated_at'] = gmdate( 'Y-m-d H:i:s' );
     $data['updated_by'] = $updated_by;
 
     try {
@@ -308,7 +310,7 @@ function erp_acct_get_formatted_journal_data( $data, $voucher_no ) {
     $journal_data = [];
 
     $journal_data['voucher_no']     = ! empty( $voucher_no ) ? $voucher_no : 0;
-    $journal_data['trn_date']       = isset( $data['date'] ) ? $data['date'] : date( 'Y-m-d' );
+    $journal_data['trn_date']       = isset( $data['date'] ) ? $data['date'] : gmdate( 'Y-m-d' );
     $journal_data['voucher_amount'] = isset( $data['voucher_amount'] ) ? $data['voucher_amount'] : 0;
     $journal_data['line_items']     = isset( $data['line_items'] ) ? $data['line_items'] : [];
     // translators: %s: voucher_no
@@ -334,20 +336,24 @@ function erp_acct_get_formatted_journal_data( $data, $voucher_no ) {
 function erp_acct_format_journal_data( $item, $journal_no ) {
     global $wpdb;
 
-    $sql = "SELECT
-    journal.id,
+    $sql = $wpdb->prepare(
+        "SELECT
+            journal.id,
+            journal_detail.trn_no,
+            journal_detail.ledger_id,
+            journal_detail.particulars,
+            journal_detail.debit,
+            journal_detail.credit
 
-    journal_detail.trn_no,
-    journal_detail.ledger_id,
-    journal_detail.particulars,
-    journal_detail.debit,
-    journal_detail.credit
+        FROM {$wpdb->prefix}erp_acct_journals as journal
+        LEFT JOIN {$wpdb->prefix}erp_acct_journal_details as journal_detail ON journal.voucher_no = journal_detail.trn_no
+        WHERE journal.voucher_no = %d",
+        $journal_no
+    );
 
-    FROM {$wpdb->prefix}erp_acct_journals as journal
-    LEFT JOIN {$wpdb->prefix}erp_acct_journal_details as journal_detail ON journal.voucher_no = journal_detail.trn_no
-    WHERE journal.voucher_no = {$journal_no}";
+    erp_disable_mysql_strict_mode();
 
-    $rows       = $wpdb->get_results( $sql, ARRAY_A );
+    $rows       = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     $line_items = [];
 
     foreach ( $rows as $key => $item ) {

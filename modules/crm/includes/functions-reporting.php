@@ -104,7 +104,8 @@ function erp_crm_customer_report_filter_form( $start = true, $end = true, $type 
         ] );
     }
 
-    erp_html_form_input( [
+    erp_html_form_input(
+        [
             'name'        => 'filter_type',
             'placeholder' => esc_html__( 'Select a type', 'erp' ),
             'type'        => 'select',
@@ -146,7 +147,8 @@ function erp_crm_growth_report_filter_form( $start = true, $end = true, $type = 
 
     echo '<form class="erp-crm-report-filter-form" action="" method="post">';
 
-    erp_html_form_input( [
+    erp_html_form_input(
+        [
             'name'        => 'filter_type',
             'placeholder' => esc_html__( 'Select a type', 'erp' ),
             'type'        => 'select',
@@ -161,23 +163,27 @@ function erp_crm_growth_report_filter_form( $start = true, $end = true, $type = 
     );
 
     if ( $start ) {
-        erp_html_form_input( [
-            'name'        => 'start',
-            'type'        => 'text',
-            'class'       => 'erp-date-picker-from custom-filter',
-            'placeholder' => esc_html__( 'From', 'erp' ),
-            'value'       => isset( $_POST['start'] ) ? sanitize_text_field( wp_unslash( $_POST['start'] ) ) : '',
-        ] );
+        erp_html_form_input(
+            [
+                'name'        => 'start',
+                'type'        => 'text',
+                'class'       => 'erp-date-picker-from custom-filter',
+                'placeholder' => esc_html__( 'From', 'erp' ),
+                'value'       => isset( $_POST['start'] ) ? sanitize_text_field( wp_unslash( $_POST['start'] ) ) : '',
+            ]
+        );
     }
 
     if ( $end ) {
-        erp_html_form_input( [
-            'name'        => 'end',
-            'type'        => 'text',
-            'class'       => 'erp-date-picker-to custom-filter',
-            'placeholder' => esc_html__( 'To', 'erp' ),
-            'value'       => isset( $_POST['end'] ) ? sanitize_text_field( wp_unslash( $_POST['end'] ) ) : '',
-        ] );
+        erp_html_form_input(
+            [
+                'name'        => 'end',
+                'type'        => 'text',
+                'class'       => 'erp-date-picker-to custom-filter',
+                'placeholder' => esc_html__( 'To', 'erp' ),
+                'value'       => isset( $_POST['end'] ) ? sanitize_text_field( wp_unslash( $_POST['end'] ) ) : '',
+            ]
+        );
     }
 
     wp_nonce_field( 'erp_crm_nonce_report' );
@@ -294,7 +300,7 @@ function erp_crm_customer_reporting_query( $start_date, $end_date, $filter_type 
             $where = '';
 
             if ( $start_date ) {
-                $where = " WHERE p.created between '{$start_date}' and '{$end_date}'";
+                $where =  $wpdb->prepare( " WHERE p.created between %s and %s", $start_date, $end_date );
             }
 
             $results = $wpdb->get_results( "SELECT cg.name, p.life_stage FROM `{$wpdb->prefix}erp_crm_contact_subscriber` cs LEFT JOIN `{$wpdb->prefix}erp_peoples` p ON cs.user_id = p.id LEFT JOIN `{$wpdb->prefix}erp_crm_contact_group` cg ON cs.group_id = cg.id {$where}", OBJECT );
@@ -374,7 +380,7 @@ function erp_crm_growth_reporting_query( $start_date, $end_date, $type ) {
     if ( 'this_year' == $type ) {
         $pattern = 'F';
 
-        $results = $peoples->whereRaw( 'year(`created`) = ?', [ date( 'Y' ) ] )
+        $results = $peoples->whereRaw( 'year(`created`) = ?', [ gmdate( 'Y' ) ] )
             ->whereNotNull( 'life_stage' )->orderBy( 'created', 'ASC' )->get();
     } elseif ( 'custom' == $type ) {
         $pattern = 'd-M-Y';
