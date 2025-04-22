@@ -103,7 +103,7 @@ class SetupWizard {
         wp_enqueue_style( 'erp-setup', WPERP_ASSETS . '/css/setup.css', [ 'dashicons', 'install' ] );
 
         wp_register_script( 'erp-select2', WPERP_ASSETS . '/vendor/select2/select2.full.min.js', false, false, true );
-        wp_register_script( 'erp-setup', WPERP_ASSETS . "/js/erp$suffix.js", [ 'jquery', 'jquery-ui-datepicker', 'erp-select2' ], date( 'Ymd' ), true );
+        wp_register_script( 'erp-setup', WPERP_ASSETS . "/js/erp$suffix.js", [ 'jquery', 'jquery-ui-datepicker', 'erp-select2' ], gmdate( 'Ymd' ), true );
 
         if ( ! empty( $_POST['save_step'] ) && isset( $this->steps[ $this->step ]['handler'] ) ) {
             call_user_func( $this->steps[ $this->step ]['handler'] );
@@ -134,9 +134,11 @@ class SetupWizard {
             <meta name="viewport" content="width=device-width" />
             <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
             <title><?php esc_html_e( 'WP ERP &rsaquo; Setup Wizard', 'erp' ); ?></title>
-            <?php wp_print_scripts( 'erp-setup' ); ?>
-            <?php do_action( 'admin_print_styles' ); ?>
-            <?php // do_action( 'admin_head' ); ?>
+            <?php 
+                wp_print_scripts( 'erp-setup' );
+                wp_enqueue_emoji_styles();
+                do_action( 'admin_print_styles' );
+            ?>
         </head>
         <body class="erp-setup wp-core-ui">
             <h1 class="erp-logo"><a href="http://wperp.com/"><?php esc_html_e( 'WP ERP', 'erp' ); ?></a></h1>
@@ -472,7 +474,7 @@ class SetupWizard {
                 <br>
                 <span class="plugin-install-info-list">
                     <span class="plugin-install-info-list-item">
-                        <a href="https://wordpress.org/plugins/wedevs-project-manager/" target="_blank"><?php esc_html( 'WP Project Manager' ); ?></a>
+                        <a href="https://wordpress.org/plugins/wedevs-project-manager/" target="_blank"><?php echo esc_html( 'WP Project Manager' ); ?></a>
                     </span>
                 </span>
             </span>
@@ -605,7 +607,7 @@ class SetupWizard {
                 <br>
                 <span class="plugin-install-info-list">
                     <span class="plugin-install-info-list-item">
-                        <a href="https://wordpress.org/plugins/wemail/" target="_blank"><?php esc_html( 'weMail' ); ?></a>
+                        <a href="https://wordpress.org/plugins/wemail/" target="_blank"><?php echo esc_html( 'weMail' ); ?></a>
                     </span>
                 </span>
             </span>

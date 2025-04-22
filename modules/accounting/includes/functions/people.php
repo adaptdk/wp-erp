@@ -145,7 +145,12 @@ function erp_people_filter_transaction( $people_id, $args = [] ) {
     $start_date = isset( $args['start_date'] ) ? $args['start_date'] : '';
     $end_date   = isset( $args['end_date'] ) ? $args['start_date'] : '';
 
-    $rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}erp_acct_people_account_details WHERE trn_date >= '{$start_date}' AND trn_date <= '{$end_date}' AND people_id = {$people_id}", ARRAY_A );
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}erp_acct_people_account_details WHERE trn_date >= %s AND trn_date <= %s AND people_id = %d",
+        $start_date,
+        $end_date,
+        $people_id
+    ), ARRAY_A );
 
     return $rows;
 }
@@ -212,7 +217,7 @@ function erp_acct_get_people_transactions( $args = [] ) {
     $financial_year = \WeDevs\ERP\Accounting\Classes\Common::closest_financial_year( $fy_start_date ) ;
 
     if ( ! empty( $args['people_id'] ) ) {
-        $where .= " AND people.people_id = {$args['people_id']} ";
+        $where .= $wpdb->prepare( " AND people.people_id = %d ", $args['people_id'] );
     }
 
     if ( empty( $args['start_date'] ) ) {
@@ -220,16 +225,16 @@ function erp_acct_get_people_transactions( $args = [] ) {
     }
 
     if ( empty( $args['end_date'] ) ) {
-        $args['end_date'] = date( 'Y-m-d', strtotime( 'last day of this month' ) );
+        $args['end_date'] = gmdate( 'Y-m-d', strtotime( 'last day of this month' ) );
     }
 
 
     if ( ! empty( $args['start_date'] ) ) {
-        $where .= " AND people.trn_date BETWEEN '{$args['start_date']}' AND '{$args['end_date']}'";
+        $where .= $wpdb->prepare( " AND people.trn_date BETWEEN %s AND %s", $args['start_date'], $args['end_date'] );
     }
 
     if ( '-1' === $args['number'] ) {
-        $limit = "LIMIT {$args['number']} OFFSET {$args['offset']}";
+        $limit = $wpdb->prepare( "LIMIT %d OFFSET %d", $args['number'], $args['offset'] );
     }
 
     $sql = 'SELECT';
@@ -253,17 +258,17 @@ function erp_acct_get_people_transactions( $args = [] ) {
         {$where} ORDER BY people.trn_date {$args['order']} {$limit}";
 
     if ( $args['count'] ) {
-        $wpdb->get_results( $sql );
+        $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         return $wpdb->num_rows;
     }
 
 
-    $results = $wpdb->get_results( $sql, ARRAY_A );
+    $results = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
     $previous_balance_data  = [
         'start_date'        => $financial_year['start_date'],
-        'end_date'          =>  date('Y-m-d', strtotime('-1 day', strtotime( $args['start_date'] ) ) ),
+        'end_date'          =>  gmdate('Y-m-d', strtotime('-1 day', strtotime( $args['start_date'] ) ) ),
         'people_id'         => $args['people_id'],
         'financial_year_id' => $financial_year['id']
     ];
@@ -343,12 +348,10 @@ function erp_acct_get_people_transactions( $args = [] ) {
 function erp_acct_get_people_previous_balance( $args = [] ) {
     global $wpdb;
 
-    $opening_balance_query     = $wpdb->prepare( "SELECT SUM(debit - credit) AS opening_balance FROM {$wpdb->prefix}erp_acct_opening_balances where type = 'people' AND ledger_id = %d AND financial_year_id = %d", $args['people_id'], $args['financial_year_id'] );
-    $opening_balance_result    = $wpdb->get_row( $opening_balance_query, ARRAY_A );
+    $opening_balance_result    = $wpdb->get_row( $wpdb->prepare( "SELECT SUM(debit - credit) AS opening_balance FROM {$wpdb->prefix}erp_acct_opening_balances where type = 'people' AND ledger_id = %d AND financial_year_id = %d", $args['people_id'], $args['financial_year_id'] ), ARRAY_A );
     $opening_balance           =  isset( $opening_balance_result['opening_balance'] ) ? $opening_balance_result['opening_balance'] : 0;
 
-    $people_transaction_query  =  $wpdb->prepare( "SELECT SUM(debit - credit) AS balance FROM {$wpdb->prefix}erp_acct_people_trn_details where   people_id = %d AND trn_date BETWEEN %s AND %s", $args['people_id'], $args['start_date'], $args['end_date'] );
-    $people_transaction_result = $wpdb->get_row( $people_transaction_query, ARRAY_A );
+    $people_transaction_result = $wpdb->get_row( $wpdb->prepare( "SELECT SUM(debit - credit) AS balance FROM {$wpdb->prefix}erp_acct_people_trn_details where   people_id = %d AND trn_date BETWEEN %s AND %s", $args['people_id'], $args['start_date'], $args['end_date'] ), ARRAY_A );
     $balance                   =  isset( $people_transaction_result['balance'] ) ? $people_transaction_result['balance'] : 0;
 
     return ($balance + $opening_balance) ;
@@ -613,10 +616,10 @@ function erp_acct_get_accounting_people( $args = [] ) {
 
         if ( $count ) {
             // Only filtered total count of people
-            $items = $wpdb->get_var( apply_filters( 'erp_get_people_total_count_query', $final_query, $args ) );
+            $items = $wpdb->get_var( apply_filters( 'erp_get_people_total_count_query', $final_query, $args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         } else {
             // Fetch results from people table
-            $results = $wpdb->get_results( apply_filters( 'erp_get_people_total_query', $final_query, $args ), ARRAY_A );
+            $results = $wpdb->get_results( apply_filters( 'erp_get_people_total_query', $final_query, $args ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             array_walk(
                 $results,
                 function ( &$results ) {

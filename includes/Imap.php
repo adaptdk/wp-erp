@@ -77,6 +77,7 @@ class Imap {
         $this->connection = imap_open( $this->mailbox, $username, $password );
 
         if ( ! $this->connection ) {
+            // phpcs:ignore 	WordPress.Security.EscapeOutput.ExceptionNotEscaped
             throw new Exception( 'Cannot connect to Email: ' . imap_last_error() );
         }
     }
@@ -404,7 +405,7 @@ class Imap {
         header( 'Cache-Control: must-revalidate' );
         header( 'Pragma: public' );
 
-        readfile( $zip_file );
+        readfile( $zip_file ); //phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
         exit;
     }
 

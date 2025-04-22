@@ -86,7 +86,7 @@ function erp_get_peoples( $args = [] ) {
         $sql_order_by = "ORDER BY $orderby $order";
 
         // Check if want all data without any pagination
-        $sql_limit = ( $number != '-1' && ! $count ) ? "LIMIT $number OFFSET $offset" : '';
+        $sql_limit = ( $number != '-1' && ! $count ) ? $wpdb->prepare( "LIMIT %d OFFSET %d", $number, $offset ) : '';
 
         if ( $meta_query ) {
             $sql['join'][] = "LEFT JOIN $pepmeta_tb as people_meta on people.id = people_meta.`erp_people_id`";
@@ -99,17 +99,17 @@ function erp_get_peoples( $args = [] ) {
         }
 
         if ( ! empty( $life_stage ) ) {
-            $sql['where'][] = "AND people.life_stage='$life_stage'";
+            $sql['where'][] = $wpdb->prepare( "AND people.life_stage = %s", $life_stage );
         }
 
         if ( ! empty( $contact_owner ) ) {
-            $sql['where'][] = "AND people.contact_owner='$contact_owner'";
+            $sql['where'][] = $wpdb->prepare( "AND people.contact_owner = %d", $contact_owner );
         }
 
         if ( erp_is_module_active( 'CRM' ) ) {
             if ( ! erp_crm_is_current_user_manager() && erp_crm_is_current_user_crm_agent() ) {
                 $current_user_id = get_current_user_id();
-                $sql['where'][]  = "AND people.contact_owner='$current_user_id'";
+                $sql['where'][]  = $wpdb->prepare( "AND people.contact_owner = %d", $current_user_id );
             }
         }
 
@@ -184,10 +184,10 @@ function erp_get_peoples( $args = [] ) {
             . $sql_limit;
         if ( $count ) {
             // Only filtered total count of people
-            $items = $wpdb->get_var( apply_filters( 'erp_get_people_total_count_query', $final_query, $args ) );
+            $items = $wpdb->get_var( apply_filters( 'erp_get_people_total_count_query', $final_query, $args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         } else {
             // Fetch results from people table
-            $results = $wpdb->get_results( apply_filters( 'erp_get_people_total_query', $final_query, $args ), ARRAY_A );
+            $results = $wpdb->get_results( apply_filters( 'erp_get_people_total_query', $final_query, $args ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             array_walk( $results, function ( &$results ) {
                 $results['types'] = explode( ',', $results['types'] );
             } );
@@ -395,20 +395,24 @@ function erp_get_people_by( $field, $value ) {
         LEFT JOIN {$wpdb->prefix}erp_people_types as p_types on p_types.id = p_types_rel.people_types_id
         ";
 
+        $placeholders = array();
+        $where_clause = '';
+
         if ( is_array( $value ) ) {
-            $separeted_values = "'" . implode( "','", $value ) . "'";
-            $sql .= " WHERE `people`.$field IN ( $separeted_values )";
+            $placeholders = array_fill( 0, count( $value ), '%s' );
+            $where_clause = " WHERE `people`.$field IN (" . implode( ', ', $placeholders ) . ")";
         } else {
-            $sql .= " WHERE `people`.$field = '$value'";
+            $placeholders[] = '%s';
+            $where_clause = " WHERE `people`.$field = %s";
         }
 
+        $sql .= $where_clause;
         $sql .= ' GROUP BY people.id ';
 
-        $results = $wpdb->get_results( $sql );
+        $results = $wpdb->get_results( $wpdb->prepare( $sql, $value ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         $results = array_map( function ( $item ) {
             $item->types = explode( ',', $item->types );
-
             return $item;
         }, $results );
 
@@ -950,10 +954,7 @@ function erp_convert_to_people( $args = [] ) {
  */
 function erp_get_people_email( $id ) {
     global $wpdb;
-
-    $sql = $wpdb->prepare( "SELECT email FROM {$wpdb->prefix}erp_peoples WHERE id = %d", absint( $id ) );
-
-    return $wpdb->get_var( $sql );
+    return $wpdb->get_var( $wpdb->prepare( "SELECT email FROM {$wpdb->prefix}erp_peoples WHERE id = %d", absint( $id ) ) );
 }
 
 /**

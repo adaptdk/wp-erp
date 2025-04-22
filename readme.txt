@@ -3,9 +3,9 @@ Contributors: tareq1988, nizamuddinbabu, wedevs
 Donate Link: https://tareq.co/donate
 Tags:  HR, CRM, Accounting, WooCommerce CRM, Recruitment, Job Listings, Inventory, ERP, Employee management, Leave management, Attendance, Reimbursement, WooCommerce Accounting, Document manager, Custom field builder, CRM integration
 Requires at least: 5.6
-Tested up to: 6.2
+Tested up to: 6.7.2
 Requires PHP: 7.2
-Stable tag: 1.12.6
+Stable tag: 1.14.0
 License: GPLv2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -323,6 +323,77 @@ It may take longer to respond to more advanced or technical queries. We promise 
 
 
 == Changelog ==
+
+= v1.14.0 -> March 05, 2025 =
+* 🪝 [Added] Dynamic department and designation creation during CSV import with employee allocation
+* 🪝 [Added] Sample employee data in CSV file with standardized format
+* 🪝 [Added] Employee ID support for export and import functionality
+* 🛠️ [Improved] Enhanced readability of exported employee CSV data
+* 🛠️ [Improved] Refined employee export and import process
+* 🛠️ [Improved] Updated export format for better compatibility
+* 🐞 [Fixed] Resolved CSV import issues for employee data
+* 🐞 [Fixed] Eliminated deprecated error warnings during onboarding
+* 🐞 [Fixed] Addressed authorization security vulnerability in WP ERP (Subscriber+) for company location deletion
+* 🐞 [Fixed] Corrected text domains and translation inconsistencies
+
+= v1.13.4 -> January 08, 2025 =
+* 🪝 [Added] New Column "Requested On" Leave Request Table.
+* 🪝 [Added] Sorting for Leave Request Table Columns Employee Name, Leave Policy, Requested for, Requested On, Leave Available & Status.
+* 🛠️ [Fixed] Compatibility with WordPress 6.7 by adjusting translation loading.
+* 🛠️ [Fixed] Unauthorized Access to Terminated Employee Information.
+* 🛠️ [Fixed] Admin+ Stored XSS Vulnerability.
+* 🛠️ [Fixed] Advance leave filter multiple leave type search like "Approved", "Reject", "Pending".
+
+= v1.13.3 -> October 10, 2024 =
+--------------------------
+* 🛠️ [FIX] Cross Site Scripting (XSS) Vulnerability.
+* 🛠️ [FIX] SQL syntax issue where vendor own products were not showing.
+* 🛠️ [FIX] Account - New invoice create email not sent.
+* 🛠️ [Fix] CRM - New contact assgined email not sent.
+* 🛠️ [Fix] New leave request email not sent.
+* 🛠️ [Fix] Alert message UI broken issue.
+* 🛠️ [Fix] WP default email settings error handle.
+* 🛠️ [Fix] Mailgun email connect & settings issue.
+* 🛠️ [Feat] Added WordPress default email to the email settings panel.
+* 🛠️ [Feat] Added test mail form for wp_mail() settings.
+
+= v1.13.2 -> April 16, 2024 =
+--------------------------
+* 🛠️ [FIX] Security vulnerability fixes and overall reliability improves.
+* 🛠️ [FIX] SQL injection related error fixed.
+
+= v1.13.1 -> April 04, 2024 =
+--------------------------
+* 🛠️ [FIX] Security vulnerability fixes and overall reliability improves.
+
+
+= v1.13.0 -> Mar 27, 2024 =
+--------------------------
+* 🛠️ [FIX] The setting fields helper text support HTML.
+* 🛠️ [FIX] Use prepare method for data binging to avoid SQL injection.
+* 🛠️ [FIX] Attachment remove from create purchase.
+* 🛠️ [FIX] Enable reset option for leave filter.
+* 🛠️ [FIX] Resolve illuminate/database package conflict with the WP Project Manager.
+
+= v1.12.9 -> Dec 28, 2023 =
+--------------------------
+* 🛠️ [FIX] SQL injection issue.
+
+= v1.12.8 -> Dec 14, 2023 =
+--------------------------
+* 🪄 [UPDATE] Update security patch for the WP List Table deprecation issue.
+
+= v1.12.7 -> Sep 21, 2023 =
+--------------------------
+* 🪝 [ADD] Implement Live Search on People List Table.
+* 🛠️ [FIX] Dependents DOB empty - Showing random date.
+* 🛠️ [FIX] Employee Notes - Not adding the notes given properly.
+* 🛠️ [FIX] Menu items overlapping issue.
+* 🛠️ [FIX] Invoice ID is not showing for Sales Transaction.
+* 🛠️ [FIX] Redirecting to incorrect page instead of Profile.
+* 🛠️ [FIX] Ninja Forms integration error.
+* 🛠️ [FIX] security vulnerability on notices.
+* 🛠️ [FIX] Email not sent warning.
 
 = v1.12.6 -> Jun 07, 2023 =
 --------------------------

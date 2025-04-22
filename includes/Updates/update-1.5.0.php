@@ -708,9 +708,8 @@ function erp_acct_populate_data() {
     do_action( 'erp_acct_before_new_acct_populate_data' );
 
     // check if people_types exists
-    $sql = "INSERT IGNORE INTO `{$wpdb->prefix}erp_people_types` (`id`, `name`) VALUES (5, 'employee')";
 
-    $wpdb->query( $sql );
+    $wpdb->query( "INSERT IGNORE INTO `{$wpdb->prefix}erp_people_types` (`id`, `name`) VALUES (5, 'employee')" );
 
     /* ===========
      * Accounitng
@@ -786,10 +785,8 @@ function erp_acct_populate_data() {
 
     // insert product types
     if ( ! $wpdb->get_var( "SELECT id FROM `{$wpdb->prefix}erp_acct_product_types` LIMIT 0, 1" ) ) {
-        $sql = "INSERT INTO `{$wpdb->prefix}erp_acct_product_types` (`id`, `name`, `slug`)
-                    VALUES (1, 'Inventory', 'inventory'), (2, 'Service', 'service')";
-
-        $wpdb->query( $sql );
+        $wpdb->query( "INSERT INTO `{$wpdb->prefix}erp_acct_product_types` (`id`, `name`, `slug`)
+        VALUES (1, 'Inventory', 'inventory'), (2, 'Service', 'service')" );
     }
 
     // insert currency info
@@ -960,35 +957,33 @@ function erp_acct_populate_data() {
         ];
 
         foreach ( $currency_symbols as $key => $val ) {
-            $sql = "INSERT INTO `{$wpdb->prefix}erp_acct_currency_info` (`name`, `sign`)
-                VALUES ( '{$key}', '{$val}' )";
-
-            $wpdb->query( $sql );
+            $wpdb->query( $wpdb->prepare( "INSERT INTO `{$wpdb->prefix}erp_acct_currency_info` (`name`, `sign`)
+            VALUES ( %s, %s )", $key, $val ) );
         }
     }
 
     //Insert default financial years
     if ( ! $wpdb->get_var( "SELECT id FROM `{$wpdb->prefix}erp_acct_financial_years` LIMIT 0, 1" ) ) {
         $start_date = $wpdb->get_var( "SELECT MIN(issue_date) FROM {$wpdb->prefix}erp_ac_transactions LIMIT 1" );
-        $end_date   = date( 'Y-m-d' );
+        $end_date   = gmdate( 'Y-m-d' );
 
         $wpdb->insert( $wpdb->prefix . 'erp_acct_financial_years', [
-            'name'       => date( 'Y' ),
+            'name'       => gmdate( 'Y' ),
             'start_date' => $start_date,
             'end_date'   => $end_date,
-            'created_at' => date( 'Y-m-d' ),
+            'created_at' => gmdate( 'Y-m-d' ),
             'created_by' => get_current_user_id(),
         ] );
 
         //Next FY
-        $next_fy_name  = date( 'Y' ) . '_1';
-        $next_fy_start = date( 'Y-m-d', strtotime( ' +1 day' ) );
-        $next_fy_end   = date( 'Y-m-d', strtotime( 'Dec 31' ) );
+        $next_fy_name  = gmdate( 'Y' ) . '_1';
+        $next_fy_start = gmdate( 'Y-m-d', strtotime( ' +1 day' ) );
+        $next_fy_end   = gmdate( 'Y-m-d', strtotime( 'Dec 31' ) );
         $wpdb->insert( $wpdb->prefix . 'erp_acct_financial_years', [
             'name'       => $next_fy_name,
             'start_date' => $next_fy_start,
             'end_date'   => $next_fy_end,
-            'created_at' => date( 'Y-m-d' ),
+            'created_at' => gmdate( 'Y-m-d' ),
             'created_by' => get_current_user_id(),
         ] );
     }
@@ -1041,7 +1036,7 @@ function erp_acct_populate_tax_agencies() {
         // `erp_acct_tax_agencies`
             "{$wpdb->prefix}erp_acct_tax_agencies", [
                 'name'       => $unique_agency,
-                'created_at' => date( 'Y-m-d' ),
+                'created_at' => gmdate( 'Y-m-d' ),
                 'created_by' => 1,
             ]
         );
@@ -1073,7 +1068,7 @@ function erp_acct_populate_tax_data() {
                 'tax_rate_name' => $taxes[$i]['name'],
                 'tax_number'    => $taxes[$i]['tax_number'],
                 'default'       => 0 === $i ? 1 : 0,           // if first record
-                'created_at'    => date( 'Y-m-d' ),
+                'created_at'    => gmdate( 'Y-m-d' ),
                 'created_by'    => $taxes[$i]['created_by'],
             ]
         );
@@ -1088,7 +1083,7 @@ function erp_acct_populate_tax_data() {
                         'tax_cat_id'     => null,
                         'agency_id'      => $db_tax_agencies[$db_tax_item['agency_name']]->id,
                         'tax_rate'       => $db_tax_item['tax_rate'],
-                        'created_at'     => date( 'Y-m-d' ),
+                        'created_at'     => gmdate( 'Y-m-d' ),
                         'created_by'     => $taxes[$i]['created_by'],
                     ]
                 );
@@ -1228,9 +1223,9 @@ function erp_acct_migrate_balance_sheet() {
     global $wpdb;
 
     $start_date = $wpdb->get_var( "SELECT MIN(issue_date) FROM {$wpdb->prefix}erp_ac_transactions LIMIT 1" );
-    $end_date   = date( 'Y-m-d' );
+    $end_date   = gmdate( 'Y-m-d' );
 
-    $next_fy_start = date( 'Y-m-d', strtotime( ' +1 day' ) );
+    $next_fy_start = gmdate( 'Y-m-d', strtotime( ' +1 day' ) );
     $next_fy       = erp_acct_get_current_financial_year( $next_fy_start );
 
     if ( ! empty( $next_fy ) ) {

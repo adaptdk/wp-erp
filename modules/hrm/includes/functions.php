@@ -67,7 +67,7 @@ function erp_hr_get_work_days_without_off_day( $start_date, $end_date, $user_id 
     $holiday_exist = erp_hr_leave_get_holiday_between_date_range( $start_date, $end_date );
 
     foreach ( $between_dates as $date ) {
-        $key       = strtolower( date( 'D', strtotime( $date ) ) );
+        $key       = strtolower( gmdate( 'D', strtotime( $date ) ) );
         $is_holidy = ( $work_days[ $key ] == 0 ) ? true : false;
 
         if ( ! $is_holidy ) {
@@ -137,7 +137,7 @@ function erp_hr_get_work_days_between_dates( $start_date, $end_date, $user_id = 
     }
 
     foreach ( $between_dates as $date ) {
-        $key       = strtolower( date( 'D', strtotime( $date ) ) );
+        $key       = strtolower( gmdate( 'D', strtotime( $date ) ) );
         $is_holidy = ( $work_days[ $key ] == '0' ) ? true : false;
 
         if ( ! $is_holidy ) {
@@ -210,7 +210,7 @@ function erp_hr_can_apply_sandwich_rules_between_dates( $start_date, $end_date, 
                 $previous_holiday_exist = erp_hr_leave_get_holiday_between_date_range( $last_req_end_date, $start_day_previous );
 
                 foreach ( $previous_between_dates as $date ) {
-                    $key       = strtolower( date( 'D', strtotime( $date ) ) );
+                    $key       = strtolower( gmdate( 'D', strtotime( $date ) ) );
                     $is_holidy = ( $work_days[ $key ] == '0' ) ? true : false;
 
                     if ( ! $is_holidy ) {
@@ -250,7 +250,7 @@ function erp_hr_can_apply_sandwich_rules_between_dates( $start_date, $end_date, 
                 $previous_holiday_exist = erp_hr_leave_get_holiday_between_date_range( $end_date_next_day, $last_req_start_date );
 
                 foreach ( $previous_between_dates as $date ) {
-                    $key       = strtolower( date( 'D', strtotime( $date ) ) );
+                    $key       = strtolower( gmdate( 'D', strtotime( $date ) ) );
                     $is_holidy = ( $work_days[ $key ] == '0' ) ? true : false;
 
                     if ( ! $is_holidy ) {
@@ -619,13 +619,14 @@ function erp_hr_get_people_menu_html( $selected = '' ) {
 
                 if ( current_user_can( $value['cap'] ) ) :
 					?>
-                    <li class="<?php echo esc_attr( $key === $selected ? $key . ' active' : $key ); ?>"><a href="<?php echo ! empty( $value['pro_popup'] ) ? '#' : esc_url_raw( add_query_arg( array( 'sub-section' => $key ), admin_url( 'admin.php?page=erp-hr&section=people' ) ) ); ?>" class="" data-key="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $value['title'] ); ?> <?php echo $pro_popup; ?></a> <?php echo $tooltip; ?></li>
+                    <li class="<?php echo esc_attr( $key === $selected ? $key . ' active' : $key ); ?>"><a href="<?php echo ! empty( $value['pro_popup'] ) ? '#' : esc_url_raw( add_query_arg( array( 'sub-section' => $key ), admin_url( 'admin.php?page=erp-hr&section=people' ) ) ); ?>" class="" data-key="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $value['title'] ); ?> <?php echo wp_kses_post( $pro_popup ); ?></a> </li>
                 <?php endif; ?>
             <?php endforeach; ?>
         </ul>
     </div>
 
     <?php
+    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     echo ob_get_clean();
 }
 
@@ -698,20 +699,20 @@ function erp_settings_save_leave_years( $post_data = [] ) {
     // Error handles
     foreach ( $post_data as $key => $data ) {
         if ( empty( $data['fy_name'] ) ) {
-            return new WP_Error( 'errors', __( 'Please give a financial year name on row #' . ( $key + 1 ), 'erp' ) );
+            return new WP_Error( 'errors', __( 'Please give a financial year name on row #', 'erp' ) . ( $key + 1 ) );
         }
         if ( empty( $data['start_date'] ) ) {
-            return new WP_Error( 'errors', __( 'Please give a financial year start date on row #' . ( $key + 1 ), 'erp' ) );
+            return new WP_Error( 'errors', __( 'Please give a financial year start date on row #', 'erp' ) . ( $key + 1 ) );
         }
         if ( empty( $data['end_date'] ) ) {
-            return new WP_Error( 'errors', __( 'Please give a financial year end date on row #' . ( $key + 1 ), 'erp' ) );
+            return new WP_Error( 'errors', __( 'Please give a financial year end date on row #', 'erp' ) . ( $key + 1 ) );
         }
         if ( ( strtotime( $data['end_date'] ) < strtotime( $data['start_date'] ) ) || strtotime( $data['end_date'] ) === strtotime( $data['start_date'] ) ) {
-            return new WP_Error( 'errors', __( 'End date must be greater than the start date on row #' . ( $key + 1 ), 'erp' ) );
+            return new WP_Error( 'errors', __( 'End date must be greater than the start date on row #', 'erp' ) . ( $key + 1 ) );
         }
 
         if ( in_array( $data['fy_name'], $year_names ) ) {
-            return new WP_Error( 'errors', __( 'Duplicate financial year name ' . $data['fy_name'] . ' on row #' . ( $key + 1 ), 'erp' ) );
+            return new WP_Error( 'errors', __( 'Duplicate financial year name ', 'erp' ) . $data['fy_name'] . __( ' on row #', 'erp' ) . ( $key + 1 ) );
         } else {
             array_push( $year_names, $data['fy_name'] );
         }
@@ -729,7 +730,7 @@ function erp_settings_save_leave_years( $post_data = [] ) {
         $data['end_date']    = strtotime( sanitize_text_field( wp_unslash( $data['end_date'] ) ) );
         $data['description'] = sanitize_text_field( wp_unslash( $data['description'] ) );
         $data['created_by']  = get_current_user_id();
-        $data['created_at']  = date( 'Y-m-d' );
+        $data['created_at']  = gmdate( 'Y-m-d' );
 
         $wpdb->insert(
             $wpdb->prefix . 'erp_hr_financial_years',
